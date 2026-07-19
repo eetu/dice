@@ -36,7 +36,7 @@
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.69.2",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
-    "@types/node": "^24",
+    "@types/node": "^26",
     "@types/qrcode": "^1.5.5",
     "@types/three": "^0.185.1",
     "@vitejs/plugin-basic-ssl": "^2.3.0",

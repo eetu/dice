@@ -699,12 +699,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^24":
-  version: 24.13.3
-  resolution: "@types/node@npm:24.13.3"
+"@types/node@npm:^26":
+  version: 26.1.0
+  resolution: "@types/node@npm:26.1.0"
   dependencies:
-    undici-types: "npm:~7.18.0"
-  checksum: 10/cfa6ed1e16c4624d1e83b09aeb72a2f50a7e17d837bf5a1259a52e346f33a693afd289402d3b6118ce3abea7aff35f2a4f13a0284b96bc5807a50f0e22e1ec77
+    undici-types: "npm:~8.3.0"
+  checksum: 10/fee720e8ddf8aa66a22bc5cf3209347f8dcc07cbf7475f966761684f04fb34b819739a311edbf87271d6c7f9f50b1f015d3ff9e36d67d04264aafe18ac9a3796
   languageName: node
   linkType: hard
 
@@ -1282,7 +1282,7 @@ __metadata:
     "@sveltejs/adapter-static": "npm:^3.0.10"
     "@sveltejs/kit": "npm:^2.69.2"
     "@sveltejs/vite-plugin-svelte": "npm:^7.2.0"
-    "@types/node": "npm:^24"
+    "@types/node": "npm:^26"
     "@types/qrcode": "npm:^1.5.5"
     "@types/three": "npm:^0.185.1"
     "@vitejs/plugin-basic-ssl": "npm:^2.3.0"
@@ -2877,13 +2877,6 @@ __metadata:
     tsc: bin/tsc
     tsserver: bin/tsserver
   checksum: 10/22b67a18dafedf9b1468b64ca20d9aa02ea61d449b65413d8aa6552aeb63f52ef369e86beb25b6b4c91a803d9726ee5c196f391a9b64201263263410a4223ee6
-  languageName: node
-  linkType: hard
-
-"undici-types@npm:~7.18.0":
-  version: 7.18.2
-  resolution: "undici-types@npm:7.18.2"
-  checksum: 10/e61a5918f624d68420c3ca9d301e9f15b61cba6e97be39fe2ce266dd6151e4afe424d679372638826cb506be33952774e0424141200111a9857e464216c009af
   languageName: node
   linkType: hard
 
