@@ -6,6 +6,7 @@ import { base } from "$app/paths";
 import type { ClientMsg, ServerMsg } from "$lib/api";
 
 import { game } from "./game.svelte";
+import { liars } from "./liars.svelte";
 
 function wsUrl(code: string, token: string): string {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -25,6 +26,11 @@ function dispatch(msg: ServerMsg): void {
     case "presence":
       game.applyPresence(msg.playerId, msg.connected);
       break;
+    case "liars":
+      liars.apply(msg.view);
+      break;
+    // "liarsChanged" is server-internal — clients only get the personalized
+    // "liars" view above.
   }
 }
 

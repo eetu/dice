@@ -7,8 +7,9 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
-  import { api, ApiError } from "$lib/api";
+  import { api, ApiError, type Mode } from "$lib/api";
   import DiceStage from "$lib/components/DiceStage.svelte";
+  import LiarsBoard from "$lib/components/LiarsBoard.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import PlayerList from "$lib/components/PlayerList.svelte";
   import RollHistory from "$lib/components/RollHistory.svelte";
@@ -22,6 +23,7 @@
   import { THEMES } from "$lib/dice/themes";
   import { diceAudio } from "$lib/stores/audio.svelte";
   import { game } from "$lib/stores/game.svelte";
+  import { liars } from "$lib/stores/liars.svelte";
   import { session } from "$lib/stores/session.svelte";
   import { shake } from "$lib/stores/shake.svelte";
   import { wakeLock } from "$lib/stores/wakelock";
@@ -41,6 +43,7 @@
   const currentPlayer = $derived(snap ? (players[snap.turnIdx] ?? null) : null);
   const isMyTurn = $derived(!!myId && snap?.currentPlayerId === myId);
   const currentOffline = $derived(!!currentPlayer && !currentPlayer.connected);
+  const mode = $derived(snap?.mode ?? "free");
   // The socket concluded the room is gone (server restart / expired) — surface
   // it instead of reconnecting forever.
   $effect(() => {
@@ -57,6 +60,7 @@
     return () => {
       socket.disconnect();
       game.reset();
+      liars.reset();
       wakeLock.disable();
     };
   });
@@ -117,6 +121,18 @@
   }
   function reorder(order: string[]) {
     socket.send({ type: "reorder", order });
+  }
+  function setMode(m: Mode) {
+    socket.send({ type: "setMode", mode: m });
+  }
+  function bid(quantity: number, face: number) {
+    socket.send({ type: "bid", quantity, face });
+  }
+  function callLiar() {
+    socket.send({ type: "callLiar" });
+  }
+  function nextRound() {
+    socket.send({ type: "nextRound" });
   }
   function rename(name: string) {
     session.setName(name);
@@ -179,65 +195,77 @@
   {:else if !snap}
     <div class="notice">Connecting…</div>
   {:else}
-    <div class="grid">
-      <section class="stage-col">
-        <div class="stack">
-          <div class="stage-face">
-            <DiceStage
-              lastRoll={game.lastRoll}
-              diceCount={snap.diceCount}
-              diceTheme={snap.diceTheme}
-              deck={snap.deck}
-              canRoll={isMyTurn && !game.rolling}
-              rolling={game.rolling}
-              onRoll={roll}
-              onSettled={() => game.endRoll()}
-            />
-            {#if currentPlayer}
-              <div class="turn-overlay" class:mine={isMyTurn}>
-                {isMyTurn ? "Your turn" : currentPlayer.name}
-              </div>
-            {/if}
-            <button
-              class="flip-btn front-btn"
-              aria-label="Show invite QR"
-              onclick={(e) => {
-                e.stopPropagation();
-                showShare = true;
-              }}><QrCode size={15} /> Invite</button
-            >
-          </div>
-          <div class="share-face" class:hidden={!showShare}>
-            <SharePanel {code} />
-            <button
-              class="flip-btn back-btn"
-              aria-label="Back to dice"
-              onclick={() => (showShare = false)}
-              ><ArrowLeft size={15} /> Dice</button
-            >
-          </div>
-        </div>
-        <Toolbar
-          {isMyTurn}
-          currentName={currentPlayer?.name ?? null}
-          {currentOffline}
-          rolling={game.rolling}
-          onRoll={roll}
-          onSkip={skip}
-        />
-      </section>
-
-      <aside class="side">
-        <PlayerList
-          {players}
-          turnIdx={snap.turnIdx}
+    {#if mode === "liars"}
+      <div class="board">
+        <LiarsBoard
           {myId}
-          onReorder={reorder}
-          onRename={rename}
+          onBid={bid}
+          onCall={callLiar}
+          onNextRound={nextRound}
+          onNewMatch={() => setMode("liars")}
         />
-        <RollHistory history={snap.history} />
-      </aside>
-    </div>
+      </div>
+    {:else}
+      <div class="grid">
+        <section class="stage-col">
+          <div class="stack">
+            <div class="stage-face">
+              <DiceStage
+                lastRoll={game.lastRoll}
+                diceCount={snap.diceCount}
+                diceTheme={snap.diceTheme}
+                deck={snap.deck}
+                canRoll={isMyTurn && !game.rolling}
+                rolling={game.rolling}
+                onRoll={roll}
+                onSettled={() => game.endRoll()}
+              />
+              {#if currentPlayer}
+                <div class="turn-overlay" class:mine={isMyTurn}>
+                  {isMyTurn ? "Your turn" : currentPlayer.name}
+                </div>
+              {/if}
+              <button
+                class="flip-btn front-btn"
+                aria-label="Show invite QR"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  showShare = true;
+                }}><QrCode size={15} /> Invite</button
+              >
+            </div>
+            <div class="share-face" class:hidden={!showShare}>
+              <SharePanel {code} />
+              <button
+                class="flip-btn back-btn"
+                aria-label="Back to dice"
+                onclick={() => (showShare = false)}
+                ><ArrowLeft size={15} /> Dice</button
+              >
+            </div>
+          </div>
+          <Toolbar
+            {isMyTurn}
+            currentName={currentPlayer?.name ?? null}
+            {currentOffline}
+            rolling={game.rolling}
+            onRoll={roll}
+            onSkip={skip}
+          />
+        </section>
+
+        <aside class="side">
+          <PlayerList
+            {players}
+            turnIdx={snap.turnIdx}
+            {myId}
+            onReorder={reorder}
+            onRename={rename}
+          />
+          <RollHistory history={snap.history} />
+        </aside>
+      </div>
+    {/if}
 
     <Modal
       open={showSettings}
@@ -256,34 +284,47 @@
           autocomplete="off"
         />
       </div>
-      <div class="setting">
-        <span>Dice count</span>
-        <div class="stepper">
-          <button
-            aria-label="Fewer dice"
-            onclick={() => setDice(snap.diceCount - 1)}
-            disabled={snap.diceCount <= 1}>−</button
-          >
-          <span class="count">{snap.diceCount}</span>
-          <button
-            aria-label="More dice"
-            onclick={() => setDice(snap.diceCount + 1)}
-            disabled={snap.diceCount >= 8}>+</button
-          >
+      <div class="setting-col">
+        <span>Game</span>
+        <div class="seg">
+          <button class:on={mode === "free"} onclick={() => setMode("free")}>
+            Free dice
+          </button>
+          <button class:on={mode === "liars"} onclick={() => setMode("liars")}>
+            Liar's Dice
+          </button>
         </div>
       </div>
-      <Select
-        label="Dice"
-        value={snap.diceTheme}
-        options={THEMES}
-        onChange={setDiceTheme}
-      />
-      <Select
-        label="Table"
-        value={snap.deck}
-        options={DECKS}
-        onChange={setDeck}
-      />
+      {#if mode === "free"}
+        <div class="setting">
+          <span>Dice count</span>
+          <div class="stepper">
+            <button
+              aria-label="Fewer dice"
+              onclick={() => setDice(snap.diceCount - 1)}
+              disabled={snap.diceCount <= 1}>−</button
+            >
+            <span class="count">{snap.diceCount}</span>
+            <button
+              aria-label="More dice"
+              onclick={() => setDice(snap.diceCount + 1)}
+              disabled={snap.diceCount >= 8}>+</button
+            >
+          </div>
+        </div>
+        <Select
+          label="Dice"
+          value={snap.diceTheme}
+          options={THEMES}
+          onChange={setDiceTheme}
+        />
+        <Select
+          label="Table"
+          value={snap.deck}
+          options={DECKS}
+          onChange={setDeck}
+        />
+      {/if}
       <div class="setting-col">
         <span>Appearance</span>
         <ThemeToggle />
@@ -361,6 +402,15 @@
     grid-template-columns: 1fr 22rem;
     gap: 1rem;
   }
+  /* Liar's Dice board fills the same space as the free-mode grid. */
+  .board {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+  .board :global(.liars) {
+    flex: 1;
+  }
   .stage-col {
     min-height: 0;
     display: flex;
@@ -412,6 +462,25 @@
   }
   .name-input:focus {
     outline: none;
+    border-color: var(--halo-accent);
+  }
+  /* Segmented control (Game mode). */
+  .seg {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .seg button {
+    flex: 1;
+    padding: 0.55em 0.4em;
+    border: 1px solid var(--halo-border);
+    border-radius: var(--halo-radius);
+    background: var(--halo-bg-light);
+    color: var(--halo-text-main);
+    font-size: 0.9rem;
+  }
+  .seg button.on {
+    background: var(--halo-accent);
+    color: #fff;
     border-color: var(--halo-accent);
   }
   .stepper {
