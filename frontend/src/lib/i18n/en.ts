@@ -11,6 +11,7 @@ export const en = {
   orJoin: "or join one",
   codePlaceholder: "CODE",
   join: "Join",
+  joinPromptTitle: "Pick a name to join",
   errCreate: "Couldn't create a game — is the server running?",
   errNoGame: (code: string) => `No game "${code}" — it may have expired.`,
   errJoin: "Couldn't join — try again.",

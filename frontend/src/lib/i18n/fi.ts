@@ -11,6 +11,7 @@ export const fi: Catalog = {
   orJoin: "tai liity peliin",
   codePlaceholder: "KOODI",
   join: "Liity",
+  joinPromptTitle: "Valitse nimi liittyäksesi",
   errCreate: "Pelin luonti epäonnistui — onko palvelin käynnissä?",
   errNoGame: (code: string) =>
     `Peliä "${code}" ei löydy — se on ehkä vanhentunut.`,

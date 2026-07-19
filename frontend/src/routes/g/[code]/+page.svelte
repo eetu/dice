@@ -33,12 +33,13 @@
 
   const code = $derived((page.params.code ?? "").toUpperCase());
 
-  let phase = $state<"connecting" | "ready" | "notfound" | "error" | "ended">(
-    "connecting",
-  );
+  let phase = $state<
+    "connecting" | "ready" | "notfound" | "error" | "ended" | "name"
+  >("connecting");
   let myId = $state<string | null>(null);
   let showShare = $state(false); // flip the stage to the invite QR
   let showSettings = $state(false);
+  let nameDraft = $state(""); // the name-prompt input (QR/link join, no stored name)
 
   const snap = $derived(game.snapshot);
   const players = $derived(snap?.players ?? []);
@@ -69,7 +70,13 @@
   );
 
   onMount(() => {
-    connect();
+    // Joining fresh via QR/link with no stored name → ask for one first (a
+    // returning member has creds + a name already, so connect straight away).
+    if (!session.credsFor(code) && !session.name.trim()) {
+      phase = "name";
+    } else {
+      connect();
+    }
     shake.restore(); // re-arm shake from the stored on-device preference
     wakeLock.enable(); // keep the display awake during a slow round
     return () => {
@@ -157,6 +164,10 @@
     const n = v.trim();
     if (n && n !== myName) rename(n);
   }
+  function submitName() {
+    session.setName(nameDraft.trim());
+    connect();
+  }
   async function leave() {
     socket.send({ type: "leave" });
     session.clearCreds(code);
@@ -203,6 +214,27 @@
       <h2>{i18n.m.errorTitle}</h2>
       <p>{i18n.m.errorBody}</p>
       <button class="btn" onclick={connect}>{i18n.m.retry}</button>
+    </div>
+  {:else if phase === "name"}
+    <div class="notice halo-card">
+      <h2>{i18n.m.joinPromptTitle}</h2>
+      <form
+        class="namegate"
+        onsubmit={(e) => {
+          e.preventDefault();
+          submitName();
+        }}
+      >
+        <!-- svelte-ignore a11y_autofocus -->
+        <input
+          bind:value={nameDraft}
+          placeholder={i18n.m.namePlaceholder}
+          maxlength="24"
+          autocomplete="off"
+          autofocus
+        />
+        <button type="submit">{i18n.m.join}</button>
+      </form>
     </div>
   {:else if !snap}
     <div class="notice">{i18n.m.connecting}</div>
@@ -638,6 +670,30 @@
     border: none;
     border-radius: var(--halo-radius);
     padding: 0.6em 1.2em;
+    font-weight: 600;
+  }
+  .namegate {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  .namegate input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: 1rem;
+    padding: 0.6em 0.75em;
+    border: 1px solid var(--halo-border);
+    border-radius: var(--halo-radius);
+    background: var(--halo-bg-light);
+    color: var(--halo-text-main);
+  }
+  .namegate button {
+    background: var(--halo-accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--halo-radius);
+    padding: 0 1.2em;
     font-weight: 600;
   }
   @media (max-width: 820px) {

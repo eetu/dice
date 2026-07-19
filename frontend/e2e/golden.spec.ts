@@ -19,8 +19,10 @@ test("two players roll in turns and both see the result", async ({
   await alice.waitForURL(/\/g\/[A-Z0-9]{5}/);
   const code = alice.url().split("/g/")[1];
 
-  // Bob joins by the shared link (auto-joins).
+  // Bob opens the shared link; with no stored name he's prompted for one.
   await bob.goto(`/g/${code}`);
+  await bob.getByPlaceholder("Anonymous").fill("Bob");
+  await bob.getByRole("button", { name: "Join" }).click();
 
   // Both see two players.
   await expect(alice.locator(".players li")).toHaveCount(2);
