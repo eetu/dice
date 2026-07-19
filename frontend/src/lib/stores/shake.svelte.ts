@@ -113,6 +113,12 @@ class Shake {
     if (!this.shaking) {
       this.shaking = true;
       this.#startedAt = now;
+      // iOS "Shake to Undo" targets the focused text field and fires when the
+      // shake *ends* — there's no web API to disable it. We detect the shake
+      // while it's still happening, so blur any focused editable element now:
+      // with no editable first-responder, iOS has nothing to offer undo on.
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) el.blur();
       this.#onStart?.();
     }
     const level = Math.min(1, (mag - SHAKE_THRESHOLD) / 24);
