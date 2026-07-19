@@ -3,6 +3,7 @@
   import Pencil from "@lucide/svelte/icons/pencil";
 
   import type { Player } from "$lib/api";
+  import { i18n } from "$lib/i18n/i18n.svelte";
 
   type Props = {
     players: Player[];
@@ -77,7 +78,7 @@
 </script>
 
 <div class="players halo-card">
-  <h3>Players <span class="count">{players.length}</span></h3>
+  <h3>{i18n.m.players} <span class="count">{players.length}</span></h3>
   <ul>
     {#each list as p, i (p.id)}
       <li
@@ -87,7 +88,7 @@
       >
         <button
           class="handle"
-          aria-label="Drag to reorder {p.name}"
+          aria-label={i18n.m.dragReorder(p.name)}
           onpointerdown={(e) => startDrag(e, p.id)}
           ><GripVertical size={16} /></button
         >
@@ -111,7 +112,7 @@
             <button
               class="edit"
               onclick={() => startEdit(p)}
-              aria-label="Rename yourself"><Pencil size={13} /></button
+              aria-label={i18n.m.renameSelf}><Pencil size={13} /></button
             >
           {/if}
         {/if}
@@ -119,7 +120,7 @@
       </li>
     {/each}
   </ul>
-  <p class="hint">Drag a row to change the turn order.</p>
+  <p class="hint">{i18n.m.dragHint}</p>
 </div>
 
 <style>

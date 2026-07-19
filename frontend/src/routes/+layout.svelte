@@ -11,6 +11,7 @@
   import "@fontsource/space-grotesk/600.css";
   import "$lib/styles/halo.css";
 
+  import { i18n } from "$lib/i18n/i18n.svelte";
   import { theme, watchSystemTheme } from "$lib/stores/theme.svelte";
 
   let { children } = $props();
@@ -21,6 +22,10 @@
     document.documentElement.dataset.theme = theme.resolved;
   });
   $effect(() => watchSystemTheme());
+  // Keep <html lang> in sync with the chosen locale.
+  $effect(() => {
+    document.documentElement.lang = i18n.lang;
+  });
 </script>
 
 {@render children()}

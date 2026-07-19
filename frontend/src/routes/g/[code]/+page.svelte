@@ -9,6 +9,7 @@
   import { page } from "$app/state";
   import { api, ApiError, type Mode } from "$lib/api";
   import DiceStage from "$lib/components/DiceStage.svelte";
+  import LangToggle from "$lib/components/LangToggle.svelte";
   import LiarsBoard from "$lib/components/LiarsBoard.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import PlayerList from "$lib/components/PlayerList.svelte";
@@ -21,6 +22,7 @@
   import Wordmark from "$lib/components/Wordmark.svelte";
   import { DECKS } from "$lib/dice/decks";
   import { THEMES } from "$lib/dice/themes";
+  import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
   import { game } from "$lib/stores/game.svelte";
   import { liars } from "$lib/stores/liars.svelte";
@@ -44,6 +46,19 @@
   const isMyTurn = $derived(!!myId && snap?.currentPlayerId === myId);
   const currentOffline = $derived(!!currentPlayer && !currentPlayer.connected);
   const mode = $derived(snap?.mode ?? "free");
+  // Options with translated labels for the Select dropdowns.
+  const themeOptions = $derived(
+    THEMES.map((t) => ({
+      name: t.name,
+      label: i18n.m.themes[t.name] ?? t.label,
+    })),
+  );
+  const deckOptions = $derived(
+    DECKS.map((d) => ({
+      name: d.name,
+      label: i18n.m.decks[d.name] ?? d.label,
+    })),
+  );
   // The socket concluded the room is gone (server restart / expired) — surface
   // it instead of reconnecting forever.
   $effect(() => {
@@ -165,35 +180,32 @@
     <button
       class="gear"
       onclick={() => (showSettings = true)}
-      aria-label="Settings"
-      title="Settings"><Settings size={16} /></button
+      aria-label={i18n.m.settings}
+      title={i18n.m.settings}><Settings size={16} /></button
     >
-    <button class="leave" onclick={leave}>Leave</button>
+    <button class="leave" onclick={leave}>{i18n.m.leave}</button>
   </header>
 
   {#if phase === "notfound"}
     <div class="notice halo-card">
-      <h2>Game not found</h2>
-      <p>The code <strong>{code}</strong> doesn't exist or has expired.</p>
-      <a class="btn" href={resolve("/")}>Back to start</a>
+      <h2>{i18n.m.notFoundTitle}</h2>
+      <p>{i18n.m.notFoundBody(code)}</p>
+      <a class="btn" href={resolve("/")}>{i18n.m.backToStart}</a>
     </div>
   {:else if phase === "ended"}
     <div class="notice halo-card">
-      <h2>Game ended</h2>
-      <p>
-        The game <strong>{code}</strong> is no longer available — it expired or the
-        server restarted (games aren't saved). Start a fresh one.
-      </p>
-      <a class="btn" href={resolve("/")}>Back to start</a>
+      <h2>{i18n.m.endedTitle}</h2>
+      <p>{i18n.m.endedBody(code)}</p>
+      <a class="btn" href={resolve("/")}>{i18n.m.backToStart}</a>
     </div>
   {:else if phase === "error"}
     <div class="notice halo-card">
-      <h2>Couldn't connect</h2>
-      <p>Something went wrong reaching the server.</p>
-      <button class="btn" onclick={connect}>Retry</button>
+      <h2>{i18n.m.errorTitle}</h2>
+      <p>{i18n.m.errorBody}</p>
+      <button class="btn" onclick={connect}>{i18n.m.retry}</button>
     </div>
   {:else if !snap}
-    <div class="notice">Connecting…</div>
+    <div class="notice">{i18n.m.connecting}</div>
   {:else}
     {#if mode === "liars"}
       <div class="board">
@@ -222,25 +234,25 @@
               />
               {#if currentPlayer}
                 <div class="turn-overlay" class:mine={isMyTurn}>
-                  {isMyTurn ? "Your turn" : currentPlayer.name}
+                  {isMyTurn ? i18n.m.yourTurn : currentPlayer.name}
                 </div>
               {/if}
               <button
                 class="flip-btn front-btn"
-                aria-label="Show invite QR"
+                aria-label={i18n.m.invite}
                 onclick={(e) => {
                   e.stopPropagation();
                   showShare = true;
-                }}><QrCode size={15} /> Invite</button
+                }}><QrCode size={15} /> {i18n.m.invite}</button
               >
             </div>
             <div class="share-face" class:hidden={!showShare}>
               <SharePanel {code} />
               <button
                 class="flip-btn back-btn"
-                aria-label="Back to dice"
+                aria-label={i18n.m.diceBack}
                 onclick={() => (showShare = false)}
-                ><ArrowLeft size={15} /> Dice</button
+                ><ArrowLeft size={15} /> {i18n.m.diceBack}</button
               >
             </div>
           </div>
@@ -269,80 +281,84 @@
 
     <Modal
       open={showSettings}
-      label="Settings"
+      label={i18n.m.settings}
       onClose={() => (showSettings = false)}
     >
       <div class="setting-col">
-        <span>Your name</span>
+        <span>{i18n.m.yourName}</span>
         <input
           class="name-input"
           value={myName}
           onblur={(e) => renameFromInput(e.currentTarget.value)}
           onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           maxlength="24"
-          placeholder="Anonymous"
+          placeholder={i18n.m.namePlaceholder}
           autocomplete="off"
         />
       </div>
       <div class="setting-col">
-        <span>Game</span>
+        <span>{i18n.m.game}</span>
         <div class="seg">
           <button class:on={mode === "free"} onclick={() => setMode("free")}>
-            Free dice
+            {i18n.m.freeDice}
           </button>
           <button class:on={mode === "liars"} onclick={() => setMode("liars")}>
-            Liar's Dice
+            {i18n.m.liarsDice}
           </button>
         </div>
       </div>
       {#if mode === "free"}
         <div class="setting">
-          <span>Dice count</span>
+          <span>{i18n.m.diceCount}</span>
           <div class="stepper">
             <button
-              aria-label="Fewer dice"
+              aria-label={i18n.m.fewer}
               onclick={() => setDice(snap.diceCount - 1)}
               disabled={snap.diceCount <= 1}>−</button
             >
             <span class="count">{snap.diceCount}</span>
             <button
-              aria-label="More dice"
+              aria-label={i18n.m.more}
               onclick={() => setDice(snap.diceCount + 1)}
               disabled={snap.diceCount >= 8}>+</button
             >
           </div>
         </div>
         <Select
-          label="Dice"
+          label={i18n.m.diceSelectLabel}
           value={snap.diceTheme}
-          options={THEMES}
+          options={themeOptions}
           onChange={setDiceTheme}
         />
         <Select
-          label="Table"
+          label={i18n.m.tableSelectLabel}
           value={snap.deck}
-          options={DECKS}
+          options={deckOptions}
           onChange={setDeck}
         />
       {/if}
       <div class="setting-col">
-        <span>Appearance</span>
+        <span>{i18n.m.appearance}</span>
         <ThemeToggle />
       </div>
+      <div class="setting-col">
+        <span>{i18n.m.language}</span>
+        <LangToggle />
+      </div>
       <div class="setting">
-        <span>Sound</span>
+        <span>{i18n.m.sound}</span>
         <Switch
           checked={!diceAudio.muted}
-          label="Sound"
+          label={i18n.m.sound}
           onChange={() => diceAudio.toggleMute()}
         />
       </div>
       {#if shake.supported}
         <div class="setting">
-          <span>Shake to roll</span>
+          <span>{i18n.m.shakeSetting}</span>
           <Switch
             checked={shake.enabled}
-            label="Shake to roll"
+            label={i18n.m.shakeSetting}
             onChange={toggleShake}
           />
         </div>

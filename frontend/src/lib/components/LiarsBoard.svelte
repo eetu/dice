@@ -2,6 +2,7 @@
   // Mobile-first Liar's Dice board (Classic quantity+face rules). Reads the
   // personalized `liars` view (your own cup in full, others by count) + player
   // names from the game snapshot; reports intent via callbacks.
+  import { i18n } from "$lib/i18n/i18n.svelte";
   import { game } from "$lib/stores/game.svelte";
   import { liars } from "$lib/stores/liars.svelte";
 
@@ -28,9 +29,9 @@
   const view = $derived(liars.view);
   const players = $derived(game.snapshot?.players ?? []);
   function nameOf(id: string | null): string {
-    if (!id) return "Someone";
-    if (id === myId) return "You";
-    return players.find((p) => p.id === id)?.name ?? "Player";
+    if (!id) return i18n.m.someone;
+    if (id === myId) return i18n.m.you;
+    return players.find((p) => p.id === id)?.name ?? i18n.m.playerFallback;
   }
 
   const isMyTurn = $derived(!!view && !!myId && view.currentPlayerId === myId);
@@ -77,8 +78,13 @@
   const revealText = $derived.by(() => {
     const r = view?.reveal;
     if (!r) return "";
-    const verdict = r.bidWasTrue ? "the bid held" : "the bid was a bluff";
-    return `${nameOf(r.callerId)} called liar — there ${r.actual === 1 ? "was" : "were"} ${r.actual}, so ${verdict}. ${nameOf(r.loserId)} lose${r.loserId === myId ? "" : "s"} a die.`;
+    return i18n.m.liarsReveal(
+      nameOf(r.callerId),
+      r.actual,
+      r.bidWasTrue,
+      nameOf(r.loserId),
+      r.loserId === myId,
+    );
   });
 </script>
 
@@ -92,12 +98,12 @@
 
 <div class="liars">
   {#if !view}
-    <p class="muted">Dealing…</p>
+    <p class="muted">{i18n.m.dealing}</p>
   {:else if view.phase === "over"}
     <div class="over">
       <p class="crown">🏆</p>
-      <h2>{nameOf(view.winner)} win{view.winner === myId ? "" : "s"}!</h2>
-      <button class="primary" onclick={onNewMatch}>Play again</button>
+      <h2>{i18n.m.liarsWin(nameOf(view.winner), view.winner === myId)}</h2>
+      <button class="primary" onclick={onNewMatch}>{i18n.m.playAgain}</button>
     </div>
   {:else}
     <!-- Opponents: face-down cups + counts -->
@@ -111,7 +117,7 @@
           <span class="opp-name">{nameOf(p.playerId)}</span>
           <div class="cups">
             {#if p.out}
-              <span class="knocked">out</span>
+              <span class="knocked">{i18n.m.outShort}</span>
             {:else}
               {#each Array.from({ length: p.diceCount }) as _, i (i)}
                 <span class="cup"></span>
@@ -125,13 +131,23 @@
     <!-- Standing bid -->
     <div class="bidline">
       {#if view.bid}
-        <span class="who">{nameOf(view.bid.playerId)} bids</span>
+        <span class="who"
+          >{i18n.m.bids(
+            nameOf(view.bid.playerId),
+            view.bid.playerId === myId,
+          )}</span
+        >
         <span class="claim">{view.bid.quantity} ×</span>
         {@render face(view.bid.face)}
       {:else}
-        <span class="muted">{nameOf(view.currentPlayerId)} to open</span>
+        <span class="muted"
+          >{i18n.m.toOpen(
+            nameOf(view.currentPlayerId),
+            view.currentPlayerId === myId,
+          )}</span
+        >
       {/if}
-      <span class="total">{view.totalDice} dice in play · 1s are wild</span>
+      <span class="total">{i18n.m.diceInPlay(view.totalDice)}</span>
     </div>
 
     <!-- Reveal -->
@@ -156,7 +172,8 @@
             </div>
           {/each}
         </div>
-        <button class="primary" onclick={onNextRound}>Next round</button>
+        <button class="primary" onclick={onNextRound}>{i18n.m.nextRound}</button
+        >
       </div>
     {/if}
 
@@ -166,7 +183,7 @@
         {#if view.yourDice.length}
           {#each view.yourDice as d, i (i)}{@render face(d)}{/each}
         {:else}
-          <span class="knocked">You're out — spectating</span>
+          <span class="knocked">{i18n.m.spectating}</span>
         {/if}
       </div>
 
@@ -176,13 +193,13 @@
             <div class="row">
               <div class="qty">
                 <button
-                  aria-label="Fewer"
+                  aria-label={i18n.m.fewer}
                   onclick={() => stepQty(-1)}
                   disabled={draftQty <= 1}>−</button
                 >
                 <span class="n">{draftQty}</span>
                 <button
-                  aria-label="More"
+                  aria-label={i18n.m.more}
                   onclick={() => stepQty(1)}
                   disabled={draftQty >= view.totalDice}>+</button
                 >
@@ -192,7 +209,7 @@
                   <button
                     class="fp"
                     class:sel={draftFace === f}
-                    aria-label={`Face ${f}`}
+                    aria-label={i18n.m.faceAria(f)}
                     onclick={() => (draftFace = f)}>{@render face(f)}</button
                   >
                 {/each}
@@ -204,15 +221,18 @@
                 disabled={!validBid}
                 onclick={() => onBid(draftQty, draftFace)}
               >
-                Bid {draftQty} × {@render face(draftFace)}
+                {i18n.m.bidLabel(draftQty)}
+                {@render face(draftFace)}
               </button>
               <button class="liar" disabled={!view.bid} onclick={onCall}>
-                Liar!
+                {i18n.m.liar}
               </button>
             </div>
           </div>
         {:else}
-          <p class="waiting">Waiting for {nameOf(view.currentPlayerId)}…</p>
+          <p class="waiting">
+            {i18n.m.waitingFor(nameOf(view.currentPlayerId))}
+          </p>
         {/if}
       {/if}
     </div>

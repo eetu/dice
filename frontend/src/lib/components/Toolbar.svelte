@@ -1,6 +1,8 @@
 <script lang="ts">
   // The primary action bar: just the roll button (dice count + materials moved to
   // the Settings dialog so the felt stays the focus).
+  import { i18n } from "$lib/i18n/i18n.svelte";
+
   type Props = {
     isMyTurn: boolean;
     currentName: string | null;
@@ -21,18 +23,20 @@
 
 {#if isMyTurn}
   <button class="roll" onclick={onRoll} disabled={rolling}>
-    {rolling ? "Rolling…" : "Roll"}
+    {rolling ? i18n.m.rolling : i18n.m.roll}
   </button>
 {:else if currentOffline}
   <!-- Wait for a dropped player (phone standby etc.); skip is a manual fallback
     for someone who's genuinely gone. -->
   <div class="waitrow">
-    <span class="waiting">Waiting for {currentName ?? "player"}…</span>
-    <button class="skip" onclick={onSkip}>Skip</button>
+    <span class="waiting"
+      >{i18n.m.waitingFor(currentName ?? i18n.m.playerFallback)}</span
+    >
+    <button class="skip" onclick={onSkip}>{i18n.m.skip}</button>
   </div>
 {:else}
   <button class="roll" disabled>
-    {currentName ? `${currentName}'s turn` : "Waiting…"}
+    {currentName ? i18n.m.playersTurn(currentName) : i18n.m.waiting}
   </button>
 {/if}
 

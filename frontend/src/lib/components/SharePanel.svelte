@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { i18n } from "$lib/i18n/i18n.svelte";
   import { qrDataUrl } from "$lib/qr";
   import { theme } from "$lib/stores/theme.svelte";
 
@@ -27,22 +28,26 @@
 <div class="share">
   <div class="qr">
     {#if qr}
-      <img src={qr} alt="QR code to join this game" width="200" height="200" />
+      <img src={qr} alt={i18n.m.qrAlt} width="200" height="200" />
     {/if}
   </div>
   <div class="details">
-    <div class="label">Game code</div>
-    <button class="code" onclick={() => copy(code, "code")} title="Copy code">
+    <div class="label">{i18n.m.gameCode}</div>
+    <button
+      class="code"
+      onclick={() => copy(code, "code")}
+      title={i18n.m.copyCode}
+    >
       {code}
     </button>
     <button class="link" onclick={() => copy(joinUrl, "link")}>
       {copied === "link"
-        ? "Link copied"
+        ? i18n.m.linkCopied
         : copied === "code"
-          ? "Code copied"
-          : "Copy invite link"}
+          ? i18n.m.codeCopied
+          : i18n.m.copyInviteLink}
     </button>
-    <p class="hint">Scan the QR or share the code / link to invite players.</p>
+    <p class="hint">{i18n.m.shareHint}</p>
   </div>
 </div>
 

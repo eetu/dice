@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RollRecord } from "$lib/api";
+  import { i18n } from "$lib/i18n/i18n.svelte";
 
   type Props = { history: RollRecord[] };
   let { history }: Props = $props();
@@ -9,9 +10,9 @@
 </script>
 
 <div class="history halo-card">
-  <h3>History</h3>
+  <h3>{i18n.m.history}</h3>
   {#if rolls.length === 0}
-    <p class="muted">Rolls will appear here.</p>
+    <p class="muted">{i18n.m.historyEmpty}</p>
   {:else}
     <ul>
       {#each rolls as r (r.id)}

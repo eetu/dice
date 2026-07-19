@@ -2,6 +2,8 @@
   import X from "@lucide/svelte/icons/x";
   import type { Snippet } from "svelte";
 
+  import { i18n } from "$lib/i18n/i18n.svelte";
+
   // Native <dialog> chrome: showModal() gives the backdrop, focus trap, and
   // Escape-to-close for free. Content is slotted as children.
   type Props = {
@@ -33,7 +35,7 @@
   <div class="body">
     <header class="mhead">
       <h3>{label}</h3>
-      <button class="x" aria-label="Close settings" onclick={onClose}>
+      <button class="x" aria-label={i18n.m.closeSettings} onclick={onClose}>
         <X size={18} />
       </button>
     </header>

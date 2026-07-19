@@ -2,8 +2,10 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { api, ApiError } from "$lib/api";
+  import LangToggle from "$lib/components/LangToggle.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import Wordmark from "$lib/components/Wordmark.svelte";
+  import { i18n } from "$lib/i18n/i18n.svelte";
   import { session } from "$lib/stores/session.svelte";
 
   let name = $state(session.name);
@@ -24,7 +26,7 @@
       });
       await goto(resolve("/g/[code]", { code: creds.code }));
     } catch {
-      error = "Couldn't create a game — is the server running?";
+      error = i18n.m.errCreate;
       busy = false;
     }
   }
@@ -45,8 +47,8 @@
     } catch (e) {
       error =
         e instanceof ApiError && e.status === 404
-          ? `No game "${code}" — it may have expired.`
-          : "Couldn't join — try again.";
+          ? i18n.m.errNoGame(code)
+          : i18n.m.errJoin;
       busy = false;
     }
   }
@@ -56,19 +58,23 @@
   <main class="lobby halo-card">
     <div class="brand">
       <Wordmark size="2.6rem" />
-      <p class="tagline">Roll dice together, in turns.</p>
+      <p class="tagline">{i18n.m.tagline}</p>
     </div>
 
     <label class="field">
-      <span>Your name</span>
-      <input bind:value={name} placeholder="Anonymous" maxlength="24" />
+      <span>{i18n.m.yourName}</span>
+      <input
+        bind:value={name}
+        placeholder={i18n.m.namePlaceholder}
+        maxlength="24"
+      />
     </label>
 
-    <button class="primary" onclick={create} disabled={busy}
-      >Create a game</button
-    >
+    <button class="primary" onclick={create} disabled={busy}>
+      {i18n.m.createGame}
+    </button>
 
-    <div class="divider"><span>or join one</span></div>
+    <div class="divider"><span>{i18n.m.orJoin}</span></div>
 
     <form
       class="join"
@@ -79,13 +85,13 @@
     >
       <input
         bind:value={joinCode}
-        placeholder="CODE"
+        placeholder={i18n.m.codePlaceholder}
         maxlength="5"
         autocapitalize="characters"
         autocomplete="off"
         spellcheck="false"
       />
-      <button type="submit" disabled={busy}>Join</button>
+      <button type="submit" disabled={busy}>{i18n.m.join}</button>
     </form>
 
     {#if error}
@@ -93,7 +99,10 @@
     {/if}
   </main>
 
-  <div class="theme-row"><ThemeToggle /></div>
+  <div class="prefs">
+    <ThemeToggle />
+    <LangToggle />
+  </div>
 </div>
 
 <style>
@@ -106,8 +115,11 @@
     gap: 1.25rem;
     padding: 1.5rem;
   }
-  .theme-row {
+  .prefs {
     width: min(24rem, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
   }
   .lobby {
     width: min(24rem, 100%);

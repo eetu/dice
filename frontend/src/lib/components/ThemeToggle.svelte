@@ -3,19 +3,23 @@
   import Moon from "@lucide/svelte/icons/moon";
   import Sun from "@lucide/svelte/icons/sun";
 
+  import { i18n } from "$lib/i18n/i18n.svelte";
   import { setTheme, theme } from "$lib/stores/theme.svelte";
 </script>
 
 <!-- Segmented light/dark/auto control (house pattern, cf. tracker/party). -->
 <div class="seg">
   <button class:on={theme.mode === "light"} onclick={() => setTheme("light")}>
-    <Sun size={15} /> light
+    <Sun size={15} />
+    {i18n.m.light}
   </button>
   <button class:on={theme.mode === "dark"} onclick={() => setTheme("dark")}>
-    <Moon size={15} /> dark
+    <Moon size={15} />
+    {i18n.m.dark}
   </button>
   <button class:on={theme.mode === "auto"} onclick={() => setTheme("auto")}>
-    <Monitor size={15} /> auto
+    <Monitor size={15} />
+    {i18n.m.auto}
   </button>
 </div>
 

@@ -4,6 +4,7 @@
   import type { RollRecord } from "$lib/api";
   import { DiceScene, type HoverInfo } from "$lib/dice/DiceScene";
   import { themeByName } from "$lib/dice/themes";
+  import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
   import { shake } from "$lib/stores/shake.svelte";
 
@@ -213,14 +214,15 @@
 
   <div class="caption">
     {#if shake.shaking && canRoll}
-      <span class="prompt">Shaking… let go to roll</span>
+      <span class="prompt">{i18n.m.shaking}</span>
     {:else if lastRoll && !rolling}
       <!-- Result appears once the dice stop and stays up until the next roll,
         even on your own turn (the Roll button / turn chip cue the action). -->
-      <span>{lastRoll.playerName} rolled <strong>{lastRoll.total}</strong></span
-      >
+      <span>{i18n.m.rolledResult(lastRoll.playerName, lastRoll.total)}</span>
     {:else if canRoll && !lastRoll}
-      <span class="prompt">Tap{shake.enabled ? " or shake" : ""} to roll</span>
+      <span class="prompt"
+        >{shake.enabled ? i18n.m.tapOrShakeToRoll : i18n.m.tapToRoll}</span
+      >
     {/if}
   </div>
 </div>
@@ -330,9 +332,6 @@
   .caption .prompt {
     color: var(--halo-accent);
     font-weight: 600;
-  }
-  .caption strong {
-    color: var(--halo-accent);
   }
   .fallback {
     position: absolute;
