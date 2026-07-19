@@ -57,9 +57,10 @@ class DiceAudio {
     else this.#ensure();
   }
 
-  /** A die impact, shaped by the table `material` (felt / wood / concrete /
-   *  metal) and the dice `theme`. The low "knock" is the thunk (body) and is kept
-   *  prominent; felt muffles the highs, metal rings. `strength` ∈ 0..1 = volume. */
+  /** A die impact on a solid table, shaped by the `material` (felt / wood /
+   *  concrete / metal) and the dice `theme`. The low "knock" is the thunk (body)
+   *  and stays prominent; felt muffles the highs, metal rings. The liquid table
+   *  uses `splash()` instead. `strength` ∈ 0..1 = volume. */
   clack(strength = 0.6, material = "felt", theme = "ivory"): void {
     if (this.muted) return;
     const ctx = this.#ensure();
@@ -103,14 +104,6 @@ class DiceAudio {
       noiseDecay = 0.12;
       noiseQ = 2.0;
       ring = 4600; // bright metallic ring
-    } else if (material === "water") {
-      knockFreq = 90; // deep, soft plop
-      knockGain = 0.5;
-      knockDecay = 0.14;
-      noiseFreq = 900; // splashy, damp
-      noiseGain = 0.2;
-      noiseDecay = 0.1;
-      noiseQ = 0.7;
     }
 
     // Dice-material timbre (layered on the surface).
