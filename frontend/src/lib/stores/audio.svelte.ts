@@ -176,9 +176,9 @@ class DiceAudio {
     }
   }
 
-  /** A water splash — dice landing on the liquid table. A bright entry plip, a
-   *  band-swept noise "spray" (settling water), and a few descending bubble
-   *  droplets. `strength` ∈ 0..1 = volume. */
+  /** A water splash — dice landing on the liquid table. A soft "bloop" entry, a
+   *  low-passed "shhp" of settling water, and a low round gloop or two — kept
+   *  rounded (no sharp clicks / high blips). `strength` ∈ 0..1 = volume. */
   splash(strength = 0.6): void {
     if (this.muted) return;
     const ctx = this.#ensure();
@@ -186,54 +186,52 @@ class DiceAudio {
     const t = ctx.currentTime;
     const vol = Math.max(0.05, Math.min(1, strength));
 
-    // Entry plip — a very short bright noise tick.
-    const plip = ctx.createBufferSource();
-    plip.buffer = this.#noise;
-    const pf = ctx.createBiquadFilter();
-    pf.type = "bandpass";
-    pf.frequency.value = 3200 + Math.random() * 1500;
-    pf.Q.value = 1.2;
-    const pg = ctx.createGain();
-    pg.gain.setValueAtTime(0.0001, t);
-    pg.gain.exponentialRampToValueAtTime(0.5 * vol, t + 0.003);
-    pg.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
-    plip.connect(pf).connect(pg).connect(ctx.destination);
-    plip.start(t);
-    plip.stop(t + 0.06);
+    // Entry "bloop" — a low descending sine (rounded, no click).
+    const bloop = ctx.createOscillator();
+    bloop.type = "sine";
+    bloop.frequency.setValueAtTime(360 + Math.random() * 90, t);
+    bloop.frequency.exponentialRampToValueAtTime(150, t + 0.13);
+    const bpg = ctx.createGain();
+    bpg.gain.setValueAtTime(0.0001, t);
+    bpg.gain.exponentialRampToValueAtTime(0.4 * vol, t + 0.012);
+    bpg.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
+    bloop.connect(bpg).connect(ctx.destination);
+    bloop.start(t);
+    bloop.stop(t + 0.2);
 
-    // Spray — noise through a bandpass sweeping high → low as it settles.
+    // Spray — noise through a LOW-PASS sweeping down: a soft "shhp", not a hiss.
     const spray = ctx.createBufferSource();
     spray.buffer = this.#noise;
     spray.loop = true;
-    const sf = ctx.createBiquadFilter();
-    sf.type = "bandpass";
-    sf.frequency.setValueAtTime(4200, t);
-    sf.frequency.exponentialRampToValueAtTime(700, t + 0.28);
-    sf.Q.value = 0.8;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(2000, t);
+    lp.frequency.exponentialRampToValueAtTime(450, t + 0.3);
+    lp.Q.value = 0.4;
     const sg = ctx.createGain();
     sg.gain.setValueAtTime(0.0001, t);
-    sg.gain.exponentialRampToValueAtTime(0.22 * vol, t + 0.02);
-    sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
-    spray.connect(sf).connect(sg).connect(ctx.destination);
+    sg.gain.exponentialRampToValueAtTime(0.14 * vol, t + 0.02);
+    sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    spray.connect(lp).connect(sg).connect(ctx.destination);
     spray.start(t);
-    spray.stop(t + 0.38);
+    spray.stop(t + 0.36);
 
-    // Bubbles — a couple of quick descending sine blips (droplets).
-    const bubbles = 2 + Math.floor(Math.random() * 2);
+    // A low round "gloop" or two — much lower pitch + gentler than before.
+    const bubbles = 1 + Math.floor(Math.random() * 2);
     for (let i = 0; i < bubbles; i++) {
-      const bt = t + 0.02 + Math.random() * 0.18;
-      const f0 = 500 + Math.random() * 500;
+      const bt = t + 0.04 + Math.random() * 0.13;
+      const f0 = 150 + Math.random() * 170; // 150–320 Hz (was 500–1000)
       const osc = ctx.createOscillator();
       osc.type = "sine";
       osc.frequency.setValueAtTime(f0, bt);
-      osc.frequency.exponentialRampToValueAtTime(f0 * 0.45, bt + 0.09);
+      osc.frequency.exponentialRampToValueAtTime(f0 * 0.5, bt + 0.12);
       const bg = ctx.createGain();
       bg.gain.setValueAtTime(0.0001, bt);
-      bg.gain.exponentialRampToValueAtTime(0.16 * vol, bt + 0.006);
-      bg.gain.exponentialRampToValueAtTime(0.0001, bt + 0.12);
+      bg.gain.exponentialRampToValueAtTime(0.09 * vol, bt + 0.012);
+      bg.gain.exponentialRampToValueAtTime(0.0001, bt + 0.17);
       osc.connect(bg).connect(ctx.destination);
       osc.start(bt);
-      osc.stop(bt + 0.14);
+      osc.stop(bt + 0.19);
     }
   }
 
