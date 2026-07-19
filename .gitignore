@@ -1,0 +1,15 @@
+# Rust
+/target
+
+# Env / secrets
+.env
+*.env.local
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.svelte-kit/
+frontend/build/
+
+# OS
+.DS_Store

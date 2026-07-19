@@ -1,0 +1,17 @@
+[package]
+name = "dice-integration"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "dice_integration"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tempfile = { workspace = true }

@@ -1,0 +1,18 @@
+# Yarn Berry — keep the vendored release, ignore the rest.
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+
+# Deps + build output
+node_modules/
+dist/
+.svelte-kit/
+build/
+
+# Playwright
+test-results/
+playwright-report/

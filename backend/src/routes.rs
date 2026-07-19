@@ -1,0 +1,167 @@
+//! Router + REST handlers + the house SPA-serving + CSP seams.
+
+use axum::extract::{Path, State};
+use axum::http::{header, HeaderValue, StatusCode, Uri};
+use axum::response::{Html, IntoResponse, Response};
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use serde::Deserialize;
+use serde_json::json;
+use std::sync::{Arc, Mutex};
+use tower_http::set_header::SetResponseHeaderLayer;
+use tower_http::trace::TraceLayer;
+
+use crate::error::AppError;
+use crate::room::{gen_code, Room, Snapshot};
+use crate::ws::ws_handler;
+use crate::AppState;
+
+pub fn router(state: AppState) -> Router {
+    Router::new()
+        .route("/status", get(status))
+        .route("/api/games", post(create_game))
+        .route("/api/games/{code}", get(get_game))
+        .route("/api/games/{code}/join", post(join_game))
+        .route("/ws/games/{code}", get(ws_handler))
+        .fallback(get(serve_spa))
+        // Layers wrap every route above (incl. the SPA fallback) so the CSP is
+        // present on the HTML shell too.
+        .layer(csp_layer())
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
+}
+
+// ---------- REST ----------
+
+#[derive(Deserialize)]
+struct NameBody {
+    name: Option<String>,
+}
+
+async fn create_game(
+    State(st): State<AppState>,
+    body: Option<Json<NameBody>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let name = body.and_then(|b| b.0.name).unwrap_or_default();
+    let mut map = st.rooms.lock().unwrap();
+    // Bound memory on this public, un-authed endpoint.
+    if map.len() >= st.cfg.max_rooms {
+        return Err(AppError::Busy);
+    }
+    let code = gen_code(&map);
+    let room = Arc::new(Mutex::new(Room::new(code.clone(), st.cfg.max_dice)));
+    let (player_id, token) = room.lock().unwrap().add_player(name);
+    map.insert(code.clone(), room);
+    Ok(Json(
+        json!({ "code": code, "playerId": player_id, "token": token }),
+    ))
+}
+
+async fn join_game(
+    State(st): State<AppState>,
+    Path(code): Path<String>,
+    body: Option<Json<NameBody>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let code = code.to_uppercase();
+    let room = st
+        .rooms
+        .lock()
+        .unwrap()
+        .get(&code)
+        .cloned()
+        .ok_or(AppError::NotFound)?;
+    let name = body.and_then(|b| b.0.name).unwrap_or_default();
+    let (player_id, token) = {
+        let mut r = room.lock().unwrap();
+        if r.player_count() >= st.cfg.max_players {
+            return Err(AppError::RoomFull);
+        }
+        let ids = r.add_player(name);
+        // Let existing clients see the newcomer (grayed until they connect).
+        r.broadcast_sync();
+        ids
+    };
+    Ok(Json(
+        json!({ "code": code, "playerId": player_id, "token": token }),
+    ))
+}
+
+async fn get_game(
+    State(st): State<AppState>,
+    Path(code): Path<String>,
+) -> Result<Json<Snapshot>, AppError> {
+    let code = code.to_uppercase();
+    let room = st
+        .rooms
+        .lock()
+        .unwrap()
+        .get(&code)
+        .cloned()
+        .ok_or(AppError::NotFound)?;
+    let snap = room.lock().unwrap().snapshot();
+    Ok(Json(snap))
+}
+
+async fn status(State(st): State<AppState>) -> Json<serde_json::Value> {
+    let rooms = st.rooms.lock().unwrap().len();
+    Json(json!({
+        "service": "dice",
+        "version": env!("CARGO_PKG_VERSION"),
+        "rooms": rooms,
+    }))
+}
+
+// ---------- SPA serving (frontend-agnostic) ----------
+
+/// Serve a real built asset under `static_dir`, else `index.html` with 200 so
+/// the client router owns the route. canonicalize + starts_with rejects `..`.
+async fn serve_spa(State(state): State<AppState>, uri: Uri) -> Response {
+    let base = &state.cfg.static_dir;
+    let rel = uri.path().trim_start_matches('/');
+    if !rel.is_empty() {
+        let cand = base.join(rel);
+        if let (Ok(c), Ok(b)) = (cand.canonicalize(), base.canonicalize()) {
+            if c.starts_with(&b) && c.is_file() {
+                if let Ok(bytes) = tokio::fs::read(&c).await {
+                    let mime = mime_guess::from_path(&c).first_or_octet_stream();
+                    return ([(header::CONTENT_TYPE, mime.as_ref())], bytes).into_response();
+                }
+            }
+        }
+    }
+    match tokio::fs::read_to_string(base.join("index.html")).await {
+        Ok(html) => Html(html).into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "not found").into_response(),
+    }
+}
+
+// ---------- CSP ----------
+
+/// Fully same-origin: fonts are self-hosted (@fontsource, bundled into `dist`),
+/// so no `https://fonts.*` exceptions. `img-src ... blob:` covers canvas-generated
+/// dice textures / QR data URLs; the same-origin WebSocket is allowed by
+/// `connect-src 'self'`. three.js + cannon-es are plain bundled JS, so no
+/// `'wasm-unsafe-eval'` is needed.
+///
+/// `script-src` includes `'unsafe-inline'`: SvelteKit's static build emits a
+/// small inline bootstrap `<script>` with no stable hash across version bumps.
+/// The app renders no user-supplied HTML (Svelte escapes every interpolation;
+/// no `{@html}`), so the practical XSS surface is negligible. `style-src` needs
+/// `'unsafe-inline'` for Svelte's scoped/inline styles.
+fn csp_layer() -> SetResponseHeaderLayer<HeaderValue> {
+    const CSP: &str = "default-src 'self'; \
+         script-src 'self' 'unsafe-inline'; \
+         style-src 'self' 'unsafe-inline'; \
+         font-src 'self' data:; \
+         img-src 'self' data: blob:; \
+         connect-src 'self'; \
+         manifest-src 'self'; \
+         frame-ancestors 'none'; \
+         base-uri 'self'; \
+         object-src 'none'; \
+         form-action 'self'";
+    SetResponseHeaderLayer::if_not_present(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP),
+    )
+}

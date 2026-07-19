@@ -1,0 +1,16 @@
+# Build artifacts + deps (rebuilt inside the image)
+**/target
+**/node_modules
+frontend/dist
+frontend/build
+frontend/.svelte-kit
+
+# Yarn Berry — keep the vendored release, drop the cache
+frontend/.yarn/cache
+frontend/.yarn/install-state.gz
+frontend/.yarn/unplugged
+
+# Local / VCS
+**/.env
+**/.git
+**/.DS_Store
