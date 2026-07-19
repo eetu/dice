@@ -21,11 +21,15 @@ RUN apk add --no-cache clang lld musl-dev curl
 ARG TARGETPLATFORM
 RUN xx-apk add --no-cache musl-dev gcc
 WORKDIR /app
+# All workspace members' manifests are needed to load the workspace, even though
+# only `dice-backend` is built (integration is a test-only member — stub it).
 COPY Cargo.toml Cargo.lock ./
 COPY backend/Cargo.toml backend/Cargo.toml
-RUN mkdir -p backend/src \
+COPY integration/Cargo.toml integration/Cargo.toml
+RUN mkdir -p backend/src integration/src \
     && printf 'fn main() {}\n' > backend/src/main.rs \
     && : > backend/src/lib.rs \
+    && : > integration/src/lib.rs \
     && xx-cargo build --release -p dice-backend
 
 # --- Stage 3: Build the backend against real sources ---
