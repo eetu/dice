@@ -201,6 +201,7 @@ export class DiceScene {
   #world: CANNON.World;
   #diceMat = new CANNON.Material("dice");
   #floorMat = new CANNON.Material("floor");
+  #wallMat = new CANNON.Material("wall");
   #pipGeo = new THREE.CircleGeometry(DIE * 0.085, 20);
   #dice: Die[] = [];
   #themeName = "ivory";
@@ -356,6 +357,14 @@ export class DiceScene {
         restitution: 0.25,
       }),
     );
+    // Walls: no bounce + grip, so dice deaden against them instead of ricocheting
+    // into (and wedging on) a corner.
+    this.#world.addContactMaterial(
+      new CANNON.ContactMaterial(this.#diceMat, this.#wallMat, {
+        friction: 0.6,
+        restitution: 0.0,
+      }),
+    );
     this.#addFloor();
     this.#addWalls();
 
@@ -382,7 +391,7 @@ export class DiceScene {
       [0, -TRAY - t],
     ];
     for (const [x, z] of specs) {
-      const body = new CANNON.Body({ mass: 0, material: this.#floorMat });
+      const body = new CANNON.Body({ mass: 0, material: this.#wallMat });
       body.addShape(new CANNON.Box(new CANNON.Vec3(TRAY + t, h, t)));
       body.position.set(x, h, z);
       if (x !== 0)
@@ -633,10 +642,12 @@ export class DiceScene {
       d.target = targets[i] ?? 1;
       const b = d.body;
       b.wakeUp();
+      // Drop from a central patch (well inside the walls) with a gentle sideways
+      // nudge, so dice scatter over the felt rather than rocketing into corners.
       b.position.set(
-        (Math.random() - 0.5) * TRAY,
+        (Math.random() - 0.5) * (TRAY - 1.6),
         4.5 + i * 1.1,
-        (Math.random() - 0.5) * TRAY,
+        (Math.random() - 0.5) * (TRAY - 1.6),
       );
       b.quaternion.setFromEuler(
         Math.random() * Math.PI * 2,
@@ -644,9 +655,9 @@ export class DiceScene {
         Math.random() * Math.PI * 2,
       );
       b.velocity.set(
-        (Math.random() - 0.5) * 6,
+        (Math.random() - 0.5) * 4,
         -4 - Math.random() * 3,
-        (Math.random() - 0.5) * 6,
+        (Math.random() - 0.5) * 4,
       );
       b.angularVelocity.set(
         (Math.random() - 0.5) * 22,
@@ -697,6 +708,63 @@ export class DiceScene {
         d.body.quaternion.w,
       );
       d.labelQuat.copy(labelQuatFor(d.target, q));
+    });
+
+    // A cube at rest on a flat floor is either lying flat or balanced/wedged
+    // (typically against a wall) — there is no stable "slightly tilted" rest. So
+    // any die that settled NOT flat is wedged: ease the tail of its tumble down to
+    // a flat, face-up pose. Value stays correct — the relabel is recomputed
+    // against the flat orientation with the same tested labelQuatFor.
+    const FLATTEN_TAIL = 12;
+    const flat = new THREE.Quaternion(); // identity — axis-aligned, lies flat
+    const axis = new THREE.Vector3();
+    const eased = new THREE.Quaternion();
+    const total = this.#frames.length;
+    this.#dice.forEach((d, di) => {
+      const o = di * 7;
+      const last = this.#frames[total - 1];
+      if (last[o + 1] > DIE * 1.5) return; // stacked on another die — leave it
+      q.set(last[o + 3], last[o + 4], last[o + 5], last[o + 6]);
+      const upness = Math.max(
+        Math.abs(axis.set(1, 0, 0).applyQuaternion(q).y),
+        Math.abs(axis.set(0, 1, 0).applyQuaternion(q).y),
+        Math.abs(axis.set(0, 0, 1).applyQuaternion(q).y),
+      );
+      if (upness >= 0.97) return; // already flat
+      // A random yaw so flattened dice don't look grid-aligned next to natural ones.
+      flat.setFromAxisAngle(axis.set(0, 1, 0), Math.random() * Math.PI * 2);
+      d.labelQuat.copy(labelQuatFor(d.target, flat));
+      const start = Math.max(0, total - FLATTEN_TAIL);
+      const s0 = this.#frames[start];
+      const fromQ = new THREE.Quaternion(
+        s0[o + 3],
+        s0[o + 4],
+        s0[o + 5],
+        s0[o + 6],
+      );
+      const fromX = s0[o];
+      const fromY = s0[o + 1];
+      const fromZ = s0[o + 2];
+      const restX = last[o];
+      const restZ = last[o + 2];
+      const span = Math.max(1, total - 1 - start);
+      for (let f = start; f < total; f++) {
+        const tt = (f - start) / span;
+        eased.copy(fromQ).slerp(flat, tt);
+        const fr = this.#frames[f];
+        fr[o] = fromX + (restX - fromX) * tt;
+        fr[o + 1] = fromY + (DIE / 2 - fromY) * tt;
+        fr[o + 2] = fromZ + (restZ - fromZ) * tt;
+        fr[o + 3] = eased.x;
+        fr[o + 4] = eased.y;
+        fr[o + 5] = eased.z;
+        fr[o + 6] = eased.w;
+      }
+      // Keep the body consistent with the flattened rest (for #settledValues).
+      d.body.position.set(restX, DIE / 2, restZ);
+      d.body.quaternion.set(flat.x, flat.y, flat.z, flat.w);
+      d.body.velocity.setZero();
+      d.body.angularVelocity.setZero();
     });
 
     // Snap the current (on-table) dice off first, then the recorded tumble drops
