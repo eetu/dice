@@ -49,7 +49,9 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
 - `just dev` → backend on `:3040` (bacon, hot-reload), SPA on `:5173` (proxies
   `/api`, `/status`, `/ws` → `:3040`). Open two browsers to test multiplayer.
 - Config (backend, via `backend/.env`): `DICE_BIND` (`0.0.0.0:3040`),
-  `DICE_TTL_SECS` (7200), `DICE_MAX` (8), `STATIC_DIR` (`./dist`, prod only).
+  `DICE_TTL_SECS` (7200, min 1), `DICE_MAX` (8), `DICE_MAX_ROOMS` (5000),
+  `DICE_MAX_PLAYERS` (16), `STATIC_DIR` (`./dist`, prod only). Caps bound memory
+  on the public endpoint (`/api/games` → 503 when full, join → 409).
 - `just check` = clippy + rustfmt + `yarn validate`. `just test` = cargo + vitest.
 - Prod: the binary serves `dist/` with an SPA fallback; one origin, port 3040.
 
