@@ -240,7 +240,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "mime_guess",
- "rand 0.9.5",
+ "rand 0.10.2",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
