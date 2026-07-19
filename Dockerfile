@@ -6,7 +6,7 @@ FROM --platform=$BUILDPLATFORM tonistiigi/xx AS xx
 # --- Stage 1: Build the SPA (native; output is platform-independent) ---
 # Vendored yarn (no corepack): copy the manifest + lockfile + vendored release,
 # install --immutable, then build. node version matches frontend/.node-version.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-build
+FROM --platform=$BUILDPLATFORM node:26-alpine AS frontend-build
 WORKDIR /app
 COPY frontend/package.json frontend/yarn.lock frontend/.yarnrc.yml ./
 COPY frontend/.yarn/releases ./.yarn/releases
