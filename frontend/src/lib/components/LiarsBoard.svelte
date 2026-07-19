@@ -131,7 +131,7 @@
       {:else}
         <span class="muted">{nameOf(view.currentPlayerId)} to open</span>
       {/if}
-      <span class="total">{view.totalDice} dice in play</span>
+      <span class="total">{view.totalDice} dice in play · 1s are wild</span>
     </div>
 
     <!-- Reveal -->
@@ -146,8 +146,10 @@
                 {#each h.dice as d, i (i)}
                   <span
                     class="wrap"
-                    class:hit={view.reveal && d === view.reveal.bid.face}
-                    >{@render face(d)}</span
+                    class:hit={!!view.reveal && d === view.reveal.bid.face}
+                    class:wild={!!view.reveal &&
+                      view.reveal.bid.face !== 1 &&
+                      d === 1}>{@render face(d)}</span
                   >
                 {/each}
               </div>
@@ -343,6 +345,13 @@
   }
   .wrap.hit {
     opacity: 1;
+  }
+  /* A 1 counting as a wild for the bid face. */
+  .wrap.wild {
+    opacity: 1;
+  }
+  .wrap.wild .die {
+    box-shadow: inset 0 0 0 2px var(--halo-accent);
   }
 
   /* Your area */

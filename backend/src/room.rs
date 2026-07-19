@@ -649,11 +649,13 @@ impl Room {
             let Some(bid) = g.bid.clone() else {
                 return; // nothing to call
             };
+            // 1s (aces) are wild — they count toward any bid face, except a bid
+            // made ON aces (then only literal 1s count).
             let actual: u32 = g
                 .dice
                 .values()
                 .flat_map(|d| d.iter())
-                .filter(|&&f| f == bid.face)
+                .filter(|&&f| f == bid.face || (bid.face != 1 && f == 1))
                 .count() as u32;
             let bid_was_true = actual >= bid.quantity;
             let loser_id = if bid_was_true {
@@ -1009,9 +1011,9 @@ mod tests {
     #[test]
     fn liars_call_false_bid_docks_bidder() {
         let (mut room, id) = start_liars_room(2);
-        set_hand(&mut room, &id[0], vec![1, 1, 1, 1, 1]);
-        set_hand(&mut room, &id[1], vec![2, 2, 2, 2, 2]);
-        room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 6 }); // zero 6s → false
+        set_hand(&mut room, &id[0], vec![2, 2, 2, 2, 2]);
+        set_hand(&mut room, &id[1], vec![3, 3, 3, 3, 3]);
+        room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 6 }); // no 6s, no wild 1s → false
         room.apply(&id[1], ClientMsg::CallLiar);
         let v = room.liars_view(&id[1]).unwrap();
         assert_eq!(v.phase, LiarsPhase::Reveal);
@@ -1028,12 +1030,12 @@ mod tests {
         let (mut room, id) = start_liars_room(2);
         set_hand(&mut room, &id[0], vec![6, 6, 6, 1, 1]);
         set_hand(&mut room, &id[1], vec![6, 2, 2, 2, 2]);
-        room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 6 }); // four 6s → true
+        room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 6 }); // four 6s + two wild 1s → true
         room.apply(&id[1], ClientMsg::CallLiar);
         let v = room.liars_view(&id[1]).unwrap();
         let rev = v.reveal.as_ref().unwrap();
         assert!(rev.bid_was_true);
-        assert_eq!(rev.actual, 4);
+        assert_eq!(rev.actual, 6); // four 6s + two wild 1s
         assert_eq!(rev.loser_id, id[1]);
         let p1 = v.players.iter().find(|p| p.player_id == id[1]).unwrap();
         assert_eq!(p1.dice_count, 4); // caller lost one
@@ -1055,8 +1057,8 @@ mod tests {
     #[test]
     fn liars_next_round_rerolls_and_loser_starts() {
         let (mut room, id) = start_liars_room(2);
-        set_hand(&mut room, &id[0], vec![1, 1, 1, 1, 1]);
-        set_hand(&mut room, &id[1], vec![2, 2, 2, 2, 2]);
+        set_hand(&mut room, &id[0], vec![2, 2, 2, 2, 2]);
+        set_hand(&mut room, &id[1], vec![3, 3, 3, 3, 3]);
         room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 6 }); // false → id[0] loses
         room.apply(&id[1], ClientMsg::CallLiar);
         // Loser (id[0]) opens the next round.
@@ -1071,5 +1073,33 @@ mod tests {
         assert!(v.bid.is_none());
         assert_eq!(v.your_dice.len(), 4); // still down a die from last round
         assert_eq!(v.current_player_id.as_deref(), Some(id[0].as_str()));
+    }
+
+    #[test]
+    fn liars_ones_are_wild() {
+        let (mut room, id) = start_liars_room(2);
+        set_hand(&mut room, &id[0], vec![1, 1, 4, 4, 5]); // two wild 1s + two 4s
+        set_hand(&mut room, &id[1], vec![4, 3, 3, 3, 3]); // one 4
+        // "four 4s": three real 4s + two wild 1s = 5 ≥ 4 → true.
+        room.apply(&id[0], ClientMsg::Bid { quantity: 4, face: 4 });
+        room.apply(&id[1], ClientMsg::CallLiar);
+        let rev = room.liars_view(&id[1]).unwrap().reveal.unwrap();
+        assert!(rev.bid_was_true);
+        assert_eq!(rev.actual, 5); // 3 fours + 2 wild ones
+        assert_eq!(rev.loser_id, id[1]); // caller was wrong
+    }
+
+    #[test]
+    fn liars_ace_bid_has_no_wild() {
+        let (mut room, id) = start_liars_room(2);
+        set_hand(&mut room, &id[0], vec![1, 1, 2, 2, 2]); // two literal 1s
+        set_hand(&mut room, &id[1], vec![3, 3, 3, 3, 3]);
+        // Bidding ON aces counts only literal 1s (no wild bonus): 2 < 3 → false.
+        room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 1 });
+        room.apply(&id[1], ClientMsg::CallLiar);
+        let rev = room.liars_view(&id[1]).unwrap().reveal.unwrap();
+        assert!(!rev.bid_was_true);
+        assert_eq!(rev.actual, 2);
+        assert_eq!(rev.loser_id, id[0]);
     }
 }
