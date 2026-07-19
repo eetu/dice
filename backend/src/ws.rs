@@ -54,21 +54,27 @@ async fn handle_socket(mut socket: WebSocket, code: String, token: String, st: A
                 let rx = r.tx.subscribe();
                 r.set_connected(&my_id, true);
                 let snap = r.snapshot();
-                Some((my_id, rx, snap))
+                let liars = r.liars_view(&my_id);
+                Some((my_id, rx, snap, liars))
             }
             None => None,
         }
     };
-    let Some((my_id, mut rx, snapshot)) = attached else {
+    let Some((my_id, mut rx, snapshot, liars)) = attached else {
         let _ = socket.send(Message::Close(None)).await;
         return;
     };
 
-    // Push the full state to just this socket.
-    if let Ok(txt) = serde_json::to_string(&ServerMsg::Sync { state: snapshot }) {
-        if socket.send(Message::Text(txt.into())).await.is_err() {
-            mark_disconnected(&room, &my_id);
-            return;
+    // Push the full state to just this socket: the base snapshot, plus a
+    // personalized Liar's Dice view if a match is running.
+    for msg in std::iter::once(ServerMsg::Sync { state: snapshot })
+        .chain(liars.map(|view| ServerMsg::Liars { view }))
+    {
+        if let Ok(txt) = serde_json::to_string(&msg) {
+            if socket.send(Message::Text(txt.into())).await.is_err() {
+                mark_disconnected(&room, &my_id);
+                return;
+            }
         }
     }
 
@@ -76,7 +82,20 @@ async fn handle_socket(mut socket: WebSocket, code: String, token: String, st: A
         tokio::select! {
             bc = rx.recv() => match bc {
                 Ok(msg) => {
-                    let Ok(txt) = serde_json::to_string(&msg) else { continue };
+                    // `LiarsChanged` is a rebuild signal — turn it into THIS
+                    // socket's personalized view so hidden dice never go out
+                    // verbatim. The lock guard is dropped before the await.
+                    let out = match msg {
+                        ServerMsg::LiarsChanged => {
+                            let view = room.lock().unwrap().liars_view(&my_id);
+                            match view {
+                                Some(view) => ServerMsg::Liars { view },
+                                None => continue,
+                            }
+                        }
+                        other => other,
+                    };
+                    let Ok(txt) = serde_json::to_string(&out) else { continue };
                     if socket.send(Message::Text(txt.into())).await.is_err() {
                         break;
                     }
