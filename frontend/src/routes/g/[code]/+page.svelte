@@ -39,8 +39,9 @@
     "connecting" | "ready" | "notfound" | "error" | "ended" | "name"
   >("connecting");
   let myId = $state<string | null>(null);
-  let showShare = $state(false); // flip the stage to the invite QR
+  let showShare = $state(false); // flip the stage to the invite QR (free mode)
   let showSettings = $state(false);
+  let showShareModal = $state(false); // header code → share panel (all modes)
   let confirmLeave = $state(false); // leaving is destructive — confirm first
   let nameDraft = $state(""); // the name-prompt input (QR/link join, no stored name)
 
@@ -208,7 +209,15 @@
           : i18n.m.disconnected}
       ></span>
     </div>
-    <span class="code-chip">{code}</span>
+    <button
+      class="code-chip"
+      onclick={() => (showShareModal = true)}
+      aria-label={i18n.m.invite}
+      title={i18n.m.invite}
+    >
+      {code}
+      <span class="qr"><QrCode size={14} /></span>
+    </button>
     <div class="hright">
       <button
         class="gear"
@@ -451,6 +460,14 @@
   {/if}
 
   <Modal
+    open={showShareModal}
+    label={i18n.m.invite}
+    onClose={() => (showShareModal = false)}
+  >
+    <SharePanel {code} />
+  </Modal>
+
+  <Modal
     open={confirmLeave}
     label={i18n.m.leaveTitle}
     onClose={() => (confirmLeave = false)}
@@ -497,18 +514,29 @@
   .home {
     text-decoration: none;
   }
+  /* The room code doubles as the invite button (QR icon → share panel). */
   .code-chip {
     justify-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 44px;
+    padding: 0 0.4rem;
+    background: none;
+    border: none;
+    cursor: pointer;
     font-family: var(--halo-font-heading);
     font-weight: 600;
+    font-size: 1rem;
     letter-spacing: 0.15em;
-    /* High-contrast text with the accent kept as an underline cue (accent-on-light
-       as text was ~2.1:1). */
     color: var(--halo-text-main);
-    text-decoration: underline;
-    text-decoration-color: var(--halo-accent);
-    text-decoration-thickness: 2px;
-    text-underline-offset: 4px;
+  }
+  .code-chip .qr {
+    display: inline-flex;
+    color: var(--halo-accent);
+  }
+  .code-chip:hover .qr {
+    filter: brightness(1.1);
   }
   .status {
     width: 9px;
