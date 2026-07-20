@@ -248,6 +248,7 @@
     text-align: center;
     border-bottom: 1px solid var(--halo-border);
   }
+  /* Category column sticks to the left as columns scroll horizontally. */
   th.cat {
     text-align: left;
     font-weight: 400;
@@ -255,9 +256,10 @@
     white-space: nowrap;
     position: sticky;
     left: 0;
-    background: var(--halo-bg-main);
+    background: var(--halo-body);
     z-index: 1;
   }
+  /* Player-name row sticks to the top as the scorecard scrolls vertically. */
   thead th {
     font-family: var(--halo-font-heading);
     font-weight: 600;
@@ -266,6 +268,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--halo-body);
+  }
+  thead th.cat {
+    z-index: 3; /* the top-left corner is sticky on both axes */
   }
   thead th.turn {
     color: var(--halo-accent);
@@ -315,12 +324,17 @@
     color: var(--halo-on-accent);
   }
 
-  /* Dice tray */
+  /* Dice tray — a footer pinned below the scrolling scorecard so the dice + roll
+     are always in reach (they'd otherwise fall below the fold on a phone). */
   .tray {
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
     align-items: center;
+    padding-top: 0.75rem;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    border-top: 1px solid var(--halo-border);
   }
   .dice {
     display: flex;
@@ -430,5 +444,34 @@
     justify-self: center;
     width: 0.4rem;
     height: 0.4rem;
+  }
+
+  /* Phones: tighten the scorecard so more rows fit, shrink the footer dice a bit. */
+  @media (max-width: 820px) {
+    .yatzy {
+      gap: 0.5rem;
+    }
+    .card {
+      font-size: 0.82rem;
+    }
+    .card th,
+    .card td {
+      padding: 0.25rem 0.35rem;
+    }
+    .dice {
+      gap: 0.45rem;
+    }
+    .die {
+      width: 2.5rem;
+      height: 2.5rem;
+      padding: 0.28rem;
+    }
+    .pip.on {
+      width: 0.34rem;
+      height: 0.34rem;
+    }
+    .roll {
+      padding: 0.75em 1.5em;
+    }
   }
 </style>

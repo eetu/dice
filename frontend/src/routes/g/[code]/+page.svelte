@@ -190,7 +190,7 @@
   }
 </script>
 
-<div class="page">
+<div class="page" class:boarded={mode === "yatzy"}>
   <header>
     <div class="hleft">
       <a class="home" href={resolve("/")} onclick={() => socket.disconnect()}
@@ -830,6 +830,14 @@
     .page {
       height: auto;
       min-height: 100dvh;
+    }
+    /* Yatzy keeps a fixed viewport so its scorecard scrolls INSIDE the board and
+       the dice + roll stay pinned as a footer (they'd otherwise fall below the
+       fold on a phone). */
+    .page.boarded {
+      height: 100dvh;
+      min-height: 0;
+      overflow: hidden;
     }
     .grid {
       grid-template-columns: 1fr;
