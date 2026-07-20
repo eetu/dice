@@ -39,6 +39,7 @@
   let myId = $state<string | null>(null);
   let showShare = $state(false); // flip the stage to the invite QR
   let showSettings = $state(false);
+  let confirmLeave = $state(false); // leaving is destructive — confirm first
   let nameDraft = $state(""); // the name-prompt input (QR/link join, no stored name)
 
   const snap = $derived(game.snapshot);
@@ -169,6 +170,7 @@
     connect();
   }
   async function leave() {
+    confirmLeave = false;
     socket.send({ type: "leave" });
     session.clearCreds(code);
     socket.disconnect();
@@ -196,7 +198,9 @@
         aria-label={i18n.m.settings}
         title={i18n.m.settings}><Settings size={16} /></button
       >
-      <button class="leave" onclick={leave}>{i18n.m.leave}</button>
+      <button class="leave" onclick={() => (confirmLeave = true)}
+        >{i18n.m.leave}</button
+      >
     </div>
   </header>
 
@@ -400,6 +404,20 @@
       {/if}
     </Modal>
   {/if}
+
+  <Modal
+    open={confirmLeave}
+    label={i18n.m.leaveTitle}
+    onClose={() => (confirmLeave = false)}
+  >
+    <p class="confirm-body">{i18n.m.leaveBody}</p>
+    <div class="confirm-actions">
+      <button class="ghost" onclick={() => (confirmLeave = false)}>
+        {i18n.m.cancel}
+      </button>
+      <button class="danger" onclick={leave}>{i18n.m.leave}</button>
+    </div>
+  </Modal>
 </div>
 
 <style>
@@ -710,6 +728,36 @@
     border-radius: var(--halo-radius);
     padding: 0 1.2em;
     font-weight: 600;
+  }
+  /* Leave-confirm dialog */
+  .confirm-body {
+    margin: 0;
+    color: var(--halo-text-muted);
+    font-size: 0.95rem;
+    line-height: 1.45;
+  }
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+  }
+  .confirm-actions button {
+    border-radius: var(--halo-radius);
+    padding: 0.6em 1.2em;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .confirm-actions .ghost {
+    background: var(--halo-bg-light);
+    border: 1px solid var(--halo-border);
+    color: var(--halo-text-main);
+  }
+  /* Explicit red (not --halo-error: it's tomato/pink, not button-safe with white
+     text). Readable white-on-red in both themes. */
+  .confirm-actions .danger {
+    background: #dc2626;
+    border: 1px solid #dc2626;
+    color: #fff;
   }
   @media (max-width: 820px) {
     /* App-fill: the felt expands to fill between the header and the bottom Roll

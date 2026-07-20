@@ -19,6 +19,10 @@ export const en = {
   // Header + notices
   settings: "Settings",
   leave: "Leave",
+  cancel: "Cancel",
+  leaveTitle: "Leave the game?",
+  leaveBody:
+    "You'll leave this game. Others keep playing — rejoin any time with the code.",
   connecting: "Connecting…",
   backToStart: "Back to start",
   retry: "Retry",

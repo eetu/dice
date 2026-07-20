@@ -20,6 +20,10 @@ export const fi: Catalog = {
   // Header + notices
   settings: "Asetukset",
   leave: "Poistu",
+  cancel: "Peruuta",
+  leaveTitle: "Poistutaanko pelistä?",
+  leaveBody:
+    "Poistut tästä pelistä. Muut jatkavat — voit liittyä uudelleen koodilla.",
   connecting: "Yhdistetään…",
   backToStart: "Takaisin alkuun",
   retry: "Yritä uudelleen",

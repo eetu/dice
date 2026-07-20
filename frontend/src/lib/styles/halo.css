@@ -53,14 +53,17 @@
     --halo-body: #0f0f0f;
     --halo-bg-main: #252525;
     --halo-bg-light: #1c1c1c;
-    --halo-text-main: #d6d6d6;
-    --halo-text-muted: #8a8a8a;
-    --halo-text-light: #646464;
-    --halo-border: #1f1f1f;
+    --halo-text-main: #ededed;
+    --halo-text-muted: #9c9c9c;
+    --halo-text-light: #6f6f6f;
+    /* Visible hairline: the old #1f1f1f was ~indistinguishable from the body
+       (#0f0f0f) and surfaces (#1c1c1c/#252525), so every die outline, button
+       edge, input, and card border vanished into the dark field. */
+    --halo-border: #3a3a3a;
     --halo-accent-bg: rgba(247, 143, 8, 0.2);
     --halo-accent-soft: rgba(247, 143, 8, 0.2);
-    --halo-off-bg: #404040;
-    --halo-error: pink;
+    --halo-off-bg: #4a4a4a;
+    --halo-error: #ff8a8a;
     --halo-shadow: none;
   }
 }
@@ -69,14 +72,15 @@
   --halo-body: #0f0f0f;
   --halo-bg-main: #252525;
   --halo-bg-light: #1c1c1c;
-  --halo-text-main: #d6d6d6;
-  --halo-text-muted: #8a8a8a;
-  --halo-text-light: #646464;
-  --halo-border: #1f1f1f;
+  --halo-text-main: #ededed;
+  --halo-text-muted: #9c9c9c;
+  --halo-text-light: #6f6f6f;
+  /* Visible hairline — see the media-query block above for why. */
+  --halo-border: #3a3a3a;
   --halo-accent-bg: rgba(247, 143, 8, 0.2);
   --halo-accent-soft: rgba(247, 143, 8, 0.2);
-  --halo-off-bg: #404040;
-  --halo-error: pink;
+  --halo-off-bg: #4a4a4a;
+  --halo-error: #ff8a8a;
   --halo-shadow: none;
 }
 
