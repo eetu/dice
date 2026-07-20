@@ -30,6 +30,29 @@ path traversal, no secret leakage) and must degrade gracefully under abuse.
   The only path built from a request is the SPA static path, which is
   canonicalized and checked to stay under `STATIC_DIR` (no `..` escape).
 
+## Abuse / DoS resistance
+
+Because the endpoint is un-authed and public, the backend self-limits so one
+source can't deny the service to everyone (defense-in-depth — a distributed DDoS
+is still the edge's job):
+
+- **Per-IP rate limits** — a token bucket on `POST /api/games` (default 10/min)
+  and `.../join` (60/min); over budget → **429**. This is the main defense
+  against one client filling `DICE_MAX_ROOMS` and 503-ing the whole service.
+- **WebSocket caps** — per-IP (`DICE_WS_PER_IP`, default 24) and global
+  (`DICE_MAX_WS`, 20000) concurrent-connection limits; over the cap the handshake
+  is refused with **429**. A per-connection inbound-message budget
+  (`DICE_WS_MSGS_PER_SEC`, 20) drops floods and closes a socket that sustains
+  them — neutralizing the broadcast amplification where one client message fans a
+  snapshot to the whole room. WS frames are capped at 16 KiB.
+- **Body + memory caps** — request bodies are capped at 16 KiB (**413**), and
+  rooms / players / dice / history / TTL are all bounded, so total memory has a
+  ceiling regardless of traffic.
+- **Client-IP trust** — per-IP limits key on the real client IP. `DICE_TRUST_PROXY`
+  gates whether `X-Forwarded-For` / `X-Real-IP` are believed: **on** behind a
+  trusted proxy (else all clients collapse into one bucket), **off** when directly
+  exposed (else the header is forgeable to dodge limits). See `README.md`.
+
 ## Secrets
 
 There are none to inject — dice has no API keys, DB, or upstreams. `.env` (local
@@ -41,11 +64,12 @@ bind/TTL config only) is gitignored. Containers run as a non-root UID (1000).
   combos). With few live rooms and a TTL, blindly guessing an active game is
   impractical — and the payoff is joining a dice game. Accepted; revisit only if
   games ever hold anything sensitive.
-- **Unbounded room / player creation.** There is no rate limiting; a hostile
-  client could create many rooms or players to exhaust memory. Mitigated by the
-  idle-TTL reaper and the small per-room footprint, not prevented. Acceptable on
-  a LAN / low-traffic deploy; add per-IP limits (or an edge rate-limit at Traefik)
-  before exposing it broadly on the public internet.
+- **Distributed abuse.** Per-IP limits + global caps (above) stop a single source
+  from exhausting memory or connections, but a large botnet spread across many IPs
+  can still fill `DICE_MAX_ROOMS` / `DICE_MAX_WS` up to their ceilings (the app
+  degrades to 503/429, it doesn't fall over). Defending against a real distributed
+  DDoS is the edge's job (Traefik rate-limit / in-flight-req middleware, upstream
+  scrubbing) — the in-app guards are the floor, not the whole story.
 
 ## Out of scope
 

@@ -14,6 +14,8 @@ pub enum AppError {
     RoomFull,
     #[error("server is at capacity")]
     Busy,
+    #[error("too many requests")]
+    TooMany,
 }
 
 impl IntoResponse for AppError {
@@ -22,6 +24,7 @@ impl IntoResponse for AppError {
             AppError::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
             AppError::RoomFull => (StatusCode::CONFLICT, self.to_string()),
             AppError::Busy => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
+            AppError::TooMany => (StatusCode::TOO_MANY_REQUESTS, self.to_string()),
         };
         (code, Json(json!({ "error": msg }))).into_response()
     }

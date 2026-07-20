@@ -19,6 +19,16 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
 
 - **No auth, public app.** There is NO oauth2-proxy gating and NO forward-auth
   extractor — anyone with the code joins. Deploy un-gated (see raspi wiring).
+- **Self-defending public endpoint.** Since it's un-authed, the backend caps
+  abuse itself (`backend/src/guard.rs`): per-IP token buckets on create/join
+  (429), per-IP + global concurrent-WS caps (429), a per-connection message
+  budget (drops broadcast-amplification floods, closes sustained ones), and a
+  16 KiB body cap (413) — on top of the room/player/dice/history/TTL memory
+  bounds. **`DICE_TRUST_PROXY` is load-bearing:** per-IP keys off the real client
+  IP, read from `X-Forwarded-For`/`X-Real-IP` ONLY when a trusted proxy is in
+  front, else the TCP peer. Wrong setting = self-DoS (proxy, trust off) or
+  forgeable limits (no proxy, trust on). Serving uses
+  `into_make_service_with_connect_info::<SocketAddr>()` so handlers see the peer.
 - **In-memory + ephemeral.** No database. All game state lives in
   `Arc<Mutex<HashMap<Code, Arc<Mutex<Room>>>>>`. A background reaper drops rooms
   idle past `DICE_TTL_SECS` (default 2h); their code then 404s. A server restart
@@ -51,7 +61,11 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
 - Config (backend, via `backend/.env`): `DICE_BIND` (`0.0.0.0:3040`),
   `DICE_TTL_SECS` (7200, min 1), `DICE_MAX` (8), `DICE_MAX_ROOMS` (5000),
   `DICE_MAX_PLAYERS` (16), `STATIC_DIR` (`./dist`, prod only). Caps bound memory
-  on the public endpoint (`/api/games` → 503 when full, join → 409).
+  on the public endpoint (`/api/games` → 503 when full, join → 409). Abuse
+  guards: `DICE_TRUST_PROXY` (false), `DICE_RL_CREATE_PER_MIN` (10),
+  `DICE_RL_JOIN_PER_MIN` (60), `DICE_WS_PER_IP` (24), `DICE_MAX_WS` (20000),
+  `DICE_WS_MSGS_PER_SEC` (20). Full env table + the trust-proxy rule in
+  `README.md`; rationale in `SECURITY.md`.
 - `just check` = clippy + rustfmt + `yarn validate`. `just test` = cargo + vitest.
 - Prod: the binary serves `dist/` with an SPA fallback; one origin, port 3040.
 

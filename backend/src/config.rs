@@ -24,6 +24,30 @@ pub struct Config {
     pub max_rooms: usize,
     /// Cap on players per room. `DICE_MAX_PLAYERS`, default 16.
     pub max_players: usize,
+    /// Trust `X-Forwarded-For` / `X-Real-IP` for the client IP used in per-IP
+    /// abuse limits. `DICE_TRUST_PROXY`, default false. **Must be true when a
+    /// reverse proxy (Traefik/nginx) fronts this app** — otherwise every request
+    /// looks like it comes from the proxy and all clients share one rate bucket.
+    /// **Must be false when directly exposed** — otherwise a client can spoof the
+    /// header to dodge per-IP limits. See `guard::ClientIp`.
+    pub trust_proxy: bool,
+    /// Per-IP room creations allowed per minute (also the burst size).
+    /// `DICE_RL_CREATE_PER_MIN`, default 10. The main lever against one source
+    /// filling `max_rooms` and denying the whole service.
+    pub create_per_min: u32,
+    /// Per-IP joins allowed per minute (also the burst). `DICE_RL_JOIN_PER_MIN`,
+    /// default 60 — generous, since a venue full of phones can share one NAT IP.
+    pub join_per_min: u32,
+    /// Max concurrent WebSockets from a single IP. `DICE_WS_PER_IP`, default 24
+    /// (again NAT-friendly: many players behind one router).
+    pub ws_per_ip: u32,
+    /// Global cap on concurrent WebSockets — bounds live tasks/sockets.
+    /// `DICE_MAX_WS`, default 20000.
+    pub max_ws: usize,
+    /// Per-connection inbound message budget per second (burst = 2×). Neutralizes
+    /// broadcast amplification (one client message fans a snapshot to the whole
+    /// room). `DICE_WS_MSGS_PER_SEC`, default 20.
+    pub ws_msgs_per_sec: u32,
 }
 
 impl Config {
@@ -55,7 +79,37 @@ impl Config {
             max_dice,
             max_rooms,
             max_players,
+            trust_proxy: env_bool("DICE_TRUST_PROXY", false),
+            create_per_min: env_u32("DICE_RL_CREATE_PER_MIN", 10, 1),
+            join_per_min: env_u32("DICE_RL_JOIN_PER_MIN", 60, 1),
+            ws_per_ip: env_u32("DICE_WS_PER_IP", 24, 1),
+            max_ws: env::var("DICE_MAX_WS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&n| n >= 1)
+                .unwrap_or(20000),
+            ws_msgs_per_sec: env_u32("DICE_WS_MSGS_PER_SEC", 20, 1),
         })
+    }
+}
+
+/// Parse a `u32` env var, applying a floor and falling back to `default`.
+fn env_u32(key: &str, default: u32, min: u32) -> u32 {
+    env::var(key)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&n| n >= min)
+        .unwrap_or(default)
+}
+
+/// Parse a boolean env var: truthy = `1`/`true`/`yes`/`on` (case-insensitive).
+fn env_bool(key: &str, default: bool) -> bool {
+    match env::var(key) {
+        Ok(v) => matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => default,
     }
 }
 
@@ -71,5 +125,18 @@ mod tests {
         assert!(cfg.ttl.as_secs() > 0);
         assert!(cfg.max_rooms >= 1);
         assert!(cfg.max_players >= 1);
+        // Abuse guards default to safe values (proxy header NOT trusted).
+        assert!(!cfg.trust_proxy);
+        assert!(cfg.create_per_min >= 1);
+        assert!(cfg.join_per_min >= 1);
+        assert!(cfg.ws_per_ip >= 1);
+        assert!(cfg.max_ws >= 1);
+        assert!(cfg.ws_msgs_per_sec >= 1);
+    }
+
+    #[test]
+    fn env_bool_parsing() {
+        assert!(!env_bool("DICE_NOPE_UNSET", false));
+        assert!(env_bool("DICE_NOPE_UNSET", true));
     }
 }

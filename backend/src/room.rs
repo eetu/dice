@@ -951,13 +951,22 @@ mod tests {
     fn start_liars_room(n: usize) -> (Room, Vec<String>) {
         let mut room = room_with(n);
         let id = ids(&room);
-        room.apply(&id[0], ClientMsg::SetMode { mode: "liars".into() });
+        room.apply(
+            &id[0],
+            ClientMsg::SetMode {
+                mode: "liars".into(),
+            },
+        );
         (room, id)
     }
 
     /// Overwrite a player's hidden hand for deterministic tests.
     fn set_hand(room: &mut Room, id: &str, hand: Vec<u8>) {
-        room.liars.as_mut().unwrap().dice.insert(id.to_string(), hand);
+        room.liars
+            .as_mut()
+            .unwrap()
+            .dice
+            .insert(id.to_string(), hand);
     }
 
     #[test]
@@ -973,7 +982,10 @@ mod tests {
         }
         // First player opens the bidding.
         assert_eq!(
-            room.liars_view(&id[0]).unwrap().current_player_id.as_deref(),
+            room.liars_view(&id[0])
+                .unwrap()
+                .current_player_id
+                .as_deref(),
             Some(id[0].as_str())
         );
     }
@@ -984,8 +996,14 @@ mod tests {
         set_hand(&mut room, &id[0], vec![1, 2, 3, 4, 5]);
         set_hand(&mut room, &id[1], vec![6, 6, 6, 6, 6]);
         // Each viewer sees only their own faces; others are just counts.
-        assert_eq!(room.liars_view(&id[0]).unwrap().your_dice, vec![1, 2, 3, 4, 5]);
-        assert_eq!(room.liars_view(&id[1]).unwrap().your_dice, vec![6, 6, 6, 6, 6]);
+        assert_eq!(
+            room.liars_view(&id[0]).unwrap().your_dice,
+            vec![1, 2, 3, 4, 5]
+        );
+        assert_eq!(
+            room.liars_view(&id[1]).unwrap().your_dice,
+            vec![6, 6, 6, 6, 6]
+        );
         // Counts are public and agree.
         let v = room.liars_view(&id[0]).unwrap();
         assert!(v.players.iter().all(|p| p.dice_count == 5));
@@ -994,15 +1012,33 @@ mod tests {
     #[test]
     fn liars_bid_must_raise() {
         let (mut room, id) = start_liars_room(2);
-        room.apply(&id[0], ClientMsg::Bid { quantity: 2, face: 3 });
+        room.apply(
+            &id[0],
+            ClientMsg::Bid {
+                quantity: 2,
+                face: 3,
+            },
+        );
         // Not a raise (lower face) — ignored; bid + turn unchanged.
-        room.apply(&id[1], ClientMsg::Bid { quantity: 2, face: 2 });
+        room.apply(
+            &id[1],
+            ClientMsg::Bid {
+                quantity: 2,
+                face: 2,
+            },
+        );
         let v = room.liars_view(&id[1]).unwrap();
         assert_eq!(v.bid.as_ref().unwrap().quantity, 2);
         assert_eq!(v.bid.as_ref().unwrap().face, 3);
         assert_eq!(v.current_player_id.as_deref(), Some(id[1].as_str()));
         // A real raise — accepted; turn returns to id[0].
-        room.apply(&id[1], ClientMsg::Bid { quantity: 3, face: 1 });
+        room.apply(
+            &id[1],
+            ClientMsg::Bid {
+                quantity: 3,
+                face: 1,
+            },
+        );
         let v2 = room.liars_view(&id[0]).unwrap();
         assert_eq!(v2.bid.as_ref().unwrap().quantity, 3);
         assert_eq!(v2.current_player_id.as_deref(), Some(id[0].as_str()));
@@ -1013,7 +1049,13 @@ mod tests {
         let (mut room, id) = start_liars_room(2);
         set_hand(&mut room, &id[0], vec![2, 2, 2, 2, 2]);
         set_hand(&mut room, &id[1], vec![3, 3, 3, 3, 3]);
-        room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 6 }); // no 6s, no wild 1s → false
+        room.apply(
+            &id[0],
+            ClientMsg::Bid {
+                quantity: 3,
+                face: 6,
+            },
+        ); // no 6s, no wild 1s → false
         room.apply(&id[1], ClientMsg::CallLiar);
         let v = room.liars_view(&id[1]).unwrap();
         assert_eq!(v.phase, LiarsPhase::Reveal);
@@ -1030,7 +1072,13 @@ mod tests {
         let (mut room, id) = start_liars_room(2);
         set_hand(&mut room, &id[0], vec![6, 6, 6, 1, 1]);
         set_hand(&mut room, &id[1], vec![6, 2, 2, 2, 2]);
-        room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 6 }); // four 6s + two wild 1s → true
+        room.apply(
+            &id[0],
+            ClientMsg::Bid {
+                quantity: 3,
+                face: 6,
+            },
+        ); // four 6s + two wild 1s → true
         room.apply(&id[1], ClientMsg::CallLiar);
         let v = room.liars_view(&id[1]).unwrap();
         let rev = v.reveal.as_ref().unwrap();
@@ -1046,7 +1094,13 @@ mod tests {
         let (mut room, id) = start_liars_room(2);
         set_hand(&mut room, &id[0], vec![6, 6, 6, 6, 6]);
         set_hand(&mut room, &id[1], vec![3]); // one die left
-        room.apply(&id[0], ClientMsg::Bid { quantity: 5, face: 6 }); // true
+        room.apply(
+            &id[0],
+            ClientMsg::Bid {
+                quantity: 5,
+                face: 6,
+            },
+        ); // true
         room.apply(&id[1], ClientMsg::CallLiar); // caller loses last die → out
         let v = room.liars_view(&id[0]).unwrap();
         assert_eq!(v.phase, LiarsPhase::Over);
@@ -1059,11 +1113,20 @@ mod tests {
         let (mut room, id) = start_liars_room(2);
         set_hand(&mut room, &id[0], vec![2, 2, 2, 2, 2]);
         set_hand(&mut room, &id[1], vec![3, 3, 3, 3, 3]);
-        room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 6 }); // false → id[0] loses
+        room.apply(
+            &id[0],
+            ClientMsg::Bid {
+                quantity: 3,
+                face: 6,
+            },
+        ); // false → id[0] loses
         room.apply(&id[1], ClientMsg::CallLiar);
         // Loser (id[0]) opens the next round.
         assert_eq!(
-            room.liars_view(&id[1]).unwrap().current_player_id.as_deref(),
+            room.liars_view(&id[1])
+                .unwrap()
+                .current_player_id
+                .as_deref(),
             Some(id[0].as_str())
         );
         room.apply(&id[1], ClientMsg::NextRound);
@@ -1080,8 +1143,14 @@ mod tests {
         let (mut room, id) = start_liars_room(2);
         set_hand(&mut room, &id[0], vec![1, 1, 4, 4, 5]); // two wild 1s + two 4s
         set_hand(&mut room, &id[1], vec![4, 3, 3, 3, 3]); // one 4
-        // "four 4s": three real 4s + two wild 1s = 5 ≥ 4 → true.
-        room.apply(&id[0], ClientMsg::Bid { quantity: 4, face: 4 });
+                                                          // "four 4s": three real 4s + two wild 1s = 5 ≥ 4 → true.
+        room.apply(
+            &id[0],
+            ClientMsg::Bid {
+                quantity: 4,
+                face: 4,
+            },
+        );
         room.apply(&id[1], ClientMsg::CallLiar);
         let rev = room.liars_view(&id[1]).unwrap().reveal.unwrap();
         assert!(rev.bid_was_true);
@@ -1095,7 +1164,13 @@ mod tests {
         set_hand(&mut room, &id[0], vec![1, 1, 2, 2, 2]); // two literal 1s
         set_hand(&mut room, &id[1], vec![3, 3, 3, 3, 3]);
         // Bidding ON aces counts only literal 1s (no wild bonus): 2 < 3 → false.
-        room.apply(&id[0], ClientMsg::Bid { quantity: 3, face: 1 });
+        room.apply(
+            &id[0],
+            ClientMsg::Bid {
+                quantity: 3,
+                face: 1,
+            },
+        );
         room.apply(&id[1], ClientMsg::CallLiar);
         let rev = room.liars_view(&id[1]).unwrap().reveal.unwrap();
         assert!(!rev.bid_was_true);

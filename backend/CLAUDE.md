@@ -8,7 +8,12 @@ for the cross-cutting invariants (auth model, roll authority, token secrecy).
 - `lib.rs` — boot flow (dotenv → tracing → `Config` → `AppState` → router →
   serve) + the TTL `reap_loop`.
 - `config.rs` — `Config::from_env` (`DICE_BIND`, `STATIC_DIR`, `DICE_TTL_SECS`,
-  `DICE_MAX`). Public app → no `dev_auth`.
+  `DICE_MAX`, room/player caps, and the abuse-guard knobs — see root CLAUDE.md).
+  Public app → no `dev_auth`.
+- `guard.rs` — abuse guards for the un-authed endpoint: `ClientIp` extractor
+  (trust-proxy aware), per-IP `RateMap` token buckets (create/join), per-IP +
+  global WS `WsPermit` caps, and a per-connection `ConnLimiter`. All in-memory,
+  swept periodically from `lib::guard_sweep_loop`.
 - `room.rs` — the heart: `Room` (players, turn, dice, history, per-room
   `broadcast::Sender`), join-code gen, `apply(actor_id, ClientMsg)`, and the
   `ServerMsg` / `ClientMsg` / `Snapshot` wire types. Unit-tested (turn advance,
@@ -25,6 +30,11 @@ for the cross-cutting invariants (auth model, roll authority, token secrecy).
 - Codes are Crockford-ish base32 (no 0/O/1/I/L/U), 5 chars, case-insensitive on
   input (upper-cased server-side).
 - `broadcast::Sender::send` erroring (no subscribers) is expected and ignored.
+- The `ClientIp` extractor needs the peer address, so `lib.rs` serves with
+  `into_make_service_with_connect_info::<SocketAddr>()`. Drop that and (with
+  `trust_proxy` off) every client resolves to `0.0.0.0` → one shared rate bucket.
+  The WS `WsPermit` is acquired pre-upgrade and moved into the socket task; its
+  `Drop` frees the per-IP/global slot, so an aborted socket can't leak a slot.
 - CSP `script-src` includes `'unsafe-inline'` — SvelteKit's static build emits an
   inline bootstrap `<script>` with no stable hash across bumps, and the app
   renders no user HTML (Svelte escapes everything, no `{@html}`). three.js +

@@ -1,6 +1,6 @@
 //! Router + REST handlers + the house SPA-serving + CSP seams.
 
-use axum::extract::{Path, State};
+use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{header, HeaderValue, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -12,9 +12,14 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::error::AppError;
+use crate::guard::ClientIp;
 use crate::room::{gen_code, Room, Snapshot};
 use crate::ws::ws_handler;
 use crate::AppState;
+
+/// Hard cap on request bodies. The only bodies are a tiny `{ name }` JSON; this
+/// keeps an un-authed client from forcing a large allocation on POST.
+const BODY_LIMIT: usize = 16 * 1024;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -27,6 +32,7 @@ pub fn router(state: AppState) -> Router {
         // Layers wrap every route above (incl. the SPA fallback) so the CSP is
         // present on the HTML shell too.
         .layer(csp_layer())
+        .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -40,8 +46,13 @@ struct NameBody {
 
 async fn create_game(
     State(st): State<AppState>,
+    ClientIp(ip): ClientIp,
     body: Option<Json<NameBody>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    // Per-IP throttle: the main lever against one source filling `max_rooms`.
+    if !st.guard.create.allow(ip) {
+        return Err(AppError::TooMany);
+    }
     let name = body.and_then(|b| b.0.name).unwrap_or_default();
     let mut map = st.rooms.lock().unwrap();
     // Bound memory on this public, un-authed endpoint.
@@ -59,9 +70,13 @@ async fn create_game(
 
 async fn join_game(
     State(st): State<AppState>,
+    ClientIp(ip): ClientIp,
     Path(code): Path<String>,
     body: Option<Json<NameBody>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    if !st.guard.join.allow(ip) {
+        return Err(AppError::TooMany);
+    }
     let code = code.to_uppercase();
     let room = st
         .rooms

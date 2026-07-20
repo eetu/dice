@@ -26,6 +26,11 @@ pub struct Stack {
 
 impl Stack {
     pub async fn start() -> anyhow::Result<Self> {
+        Self::start_with(&[]).await
+    }
+
+    /// Start the backend with extra environment (e.g. tuned abuse-guard caps).
+    pub async fn start_with(env: &[(&str, &str)]) -> anyhow::Result<Self> {
         // A stub dist/ so serve_spa's index.html fallback resolves.
         let static_tmp = tempfile::tempdir()?;
         std::fs::write(
@@ -36,11 +41,14 @@ impl Stack {
         let port = free_port()?;
         let base = format!("http://127.0.0.1:{port}");
 
-        let child = Command::new(bin_path())
-            .env("DICE_BIND", format!("127.0.0.1:{port}"))
+        let mut cmd = Command::new(bin_path());
+        cmd.env("DICE_BIND", format!("127.0.0.1:{port}"))
             .env("STATIC_DIR", static_tmp.path())
-            .env("RUST_LOG", "warn")
-            .spawn()?;
+            .env("RUST_LOG", "warn");
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let child = cmd.spawn()?;
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
@@ -97,9 +105,18 @@ impl Stack {
 
     /// Open a player's WebSocket.
     pub async fn ws(&self, code: &str, token: &str) -> Ws {
+        self.try_ws(code, token).await.expect("ws connect")
+    }
+
+    /// Open a WebSocket, surfacing the handshake error (e.g. a 429 when over the
+    /// per-IP connection cap) instead of panicking.
+    pub async fn try_ws(
+        &self,
+        code: &str,
+        token: &str,
+    ) -> Result<Ws, tokio_tungstenite::tungstenite::Error> {
         let url = format!("ws://127.0.0.1:{}/ws/games/{code}?token={token}", self.port);
-        let (stream, _resp) = connect_async(url).await.expect("ws connect");
-        stream
+        connect_async(url).await.map(|(stream, _resp)| stream)
     }
 }
 

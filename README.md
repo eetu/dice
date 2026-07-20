@@ -38,14 +38,43 @@ Requires Rust, Node (see `frontend/.node-version`), `just`, and `bacon`.
 
 ## Configure (backend env)
 
-| Var                | Default        | Meaning                                   |
-| ------------------ | -------------- | ----------------------------------------- |
-| `DICE_BIND`        | `0.0.0.0:3040` | Listen address                            |
-| `DICE_TTL_SECS`    | `7200`         | Idle lifetime of a game before reap (≥ 1) |
-| `DICE_MAX`         | `8`            | Max dice per roll                         |
-| `DICE_MAX_ROOMS`   | `5000`         | Max concurrent game rooms (bounds memory) |
-| `DICE_MAX_PLAYERS` | `16`           | Max players per room                      |
-| `STATIC_DIR`       | `./dist`       | Built SPA to serve (prod)                 |
+| Var                    | Default        | Meaning                                                       |
+| ---------------------- | -------------- | ------------------------------------------------------------ |
+| `DICE_BIND`            | `0.0.0.0:3040` | Listen address                                               |
+| `DICE_TTL_SECS`        | `7200`         | Idle lifetime of a game before reap (≥ 1)                    |
+| `DICE_MAX`             | `8`            | Max dice per roll                                            |
+| `DICE_MAX_ROOMS`       | `5000`         | Max concurrent game rooms (bounds memory)                   |
+| `DICE_MAX_PLAYERS`     | `16`           | Max players per room                                         |
+| `STATIC_DIR`           | `./dist`       | Built SPA to serve (prod)                                    |
+| `DICE_TRUST_PROXY`     | `false`        | Trust `X-Forwarded-For`/`X-Real-IP` for per-IP limits — see below |
+| `DICE_RL_CREATE_PER_MIN` | `10`         | Per-IP room creations / minute (also the burst)             |
+| `DICE_RL_JOIN_PER_MIN` | `60`           | Per-IP joins / minute (also the burst)                      |
+| `DICE_WS_PER_IP`       | `24`           | Max concurrent WebSockets per IP                            |
+| `DICE_MAX_WS`          | `20000`        | Global cap on concurrent WebSockets                        |
+| `DICE_WS_MSGS_PER_SEC` | `20`           | Per-connection inbound message budget / sec (burst 2×)      |
+
+### Abuse protection (public endpoint)
+
+`dice` is un-authed, so it self-limits per client IP: a token bucket on room
+creation + join (returns **429**), a per-IP + global cap on concurrent
+WebSockets, a per-connection message budget (kills broadcast amplification), and
+a 16 KiB request-body cap (**413**). Room / player / dice / TTL caps above bound
+total memory. These are defense-in-depth — a real DDoS is still the edge's job.
+
+**`DICE_TRUST_PROXY` is the load-bearing switch.** Per-IP limits key on the
+client IP, which the app can only see correctly if it knows whether a proxy is in
+front:
+
+- **Behind a reverse proxy** (TLS terminator / Traefik / nginx): set
+  `DICE_TRUST_PROXY=true`. Otherwise every request looks like it comes from the
+  proxy and all clients share one bucket (self-DoS). The proxy **must** set
+  `X-Real-IP` / append `X-Forwarded-For` (Traefik and nginx do by default).
+- **Directly exposed** (no proxy): leave it `false`. Trusting the header when
+  anyone can set it lets a client forge its IP to dodge the limits.
+
+Per-IP defaults are deliberately NAT-friendly (a venue full of phones can share
+one public IP) — raise `DICE_WS_PER_IP` / `DICE_RL_JOIN_PER_MIN` for a large
+shared-network crowd, lower them to tighten a hostile-facing deploy.
 
 ## Deploy
 
@@ -64,8 +93,9 @@ so a deploy just runs the image and routes to it. Deployment-agnostic contract:
 - **Stateless:** all state is in memory — no database, no volumes, nothing to
   back up. A restart drops every game (by design).
 - **Behind a reverse proxy:** set `DICE_BIND=127.0.0.1:3040` so the proxy is the
-  only public listener. `/ws` is same-origin, so a normal HTTP proxy that
-  forwards WebSocket upgrades needs no special config.
+  only public listener, and **`DICE_TRUST_PROXY=true`** so per-IP limits see the
+  real client (see _Abuse protection_). `/ws` is same-origin, so a normal HTTP
+  proxy that forwards WebSocket upgrades needs no special config.
 
 Run it directly:
 

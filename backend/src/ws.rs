@@ -7,10 +7,12 @@ use std::sync::{Arc, Mutex};
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 
+use crate::guard::{ClientIp, MsgVerdict, WsPermit};
 use crate::room::{ClientMsg, Room, ServerMsg};
 use crate::AppState;
 
@@ -23,17 +25,31 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Path(code): Path<String>,
     Query(q): Query<WsAuth>,
+    ClientIp(ip): ClientIp,
     State(st): State<AppState>,
 ) -> impl IntoResponse {
+    // Shed load before the upgrade: cap concurrent sockets per IP and globally.
+    // The permit rides into the socket task and frees its slot when it drops.
+    let Some(permit) = st.guard.try_ws(ip) else {
+        return (StatusCode::TOO_MANY_REQUESTS, "too many connections").into_response();
+    };
     // The protocol messages are tiny (a roll, a name, a reorder of a handful of
     // ids). Cap the frame/message size hard so an un-authed client can't force a
     // large allocation on this public endpoint.
     ws.max_message_size(16 * 1024)
         .max_frame_size(16 * 1024)
-        .on_upgrade(move |socket| handle_socket(socket, code, q.token, st))
+        .on_upgrade(move |socket| handle_socket(socket, code, q.token, st, permit))
+        .into_response()
 }
 
-async fn handle_socket(mut socket: WebSocket, code: String, token: String, st: AppState) {
+async fn handle_socket(
+    mut socket: WebSocket,
+    code: String,
+    token: String,
+    st: AppState,
+    // Held for the connection's lifetime; drop releases the per-IP/global slot.
+    _permit: WsPermit,
+) {
     let code = code.to_uppercase();
     // Take the room out of the registry into a local BEFORE the let-else, so the
     // registry MutexGuard temporary is dropped here and never held across the
@@ -78,6 +94,11 @@ async fn handle_socket(mut socket: WebSocket, code: String, token: String, st: A
         }
     }
 
+    // Per-connection inbound budget: one client message can fan a full snapshot
+    // to the whole room, so a flood is amplified. Over budget → drop the message
+    // (kill the amplification); sustained flooding → close the socket.
+    let mut limiter = st.guard.conn_limiter();
+
     loop {
         tokio::select! {
             bc = rx.recv() => match bc {
@@ -105,6 +126,11 @@ async fn handle_socket(mut socket: WebSocket, code: String, token: String, st: A
             },
             ws = socket.recv() => match ws {
                 Some(Ok(Message::Text(t))) => {
+                    match limiter.check() {
+                        MsgVerdict::Ok => {}
+                        MsgVerdict::Drop => continue,
+                        MsgVerdict::Close => break,
+                    }
                     if let Ok(msg) = serde_json::from_str::<ClientMsg>(t.as_str()) {
                         // Leave removes the player; close the socket too so an
                         // ex-member can't keep acting / keep the room alive.
