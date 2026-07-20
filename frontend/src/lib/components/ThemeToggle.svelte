@@ -8,16 +8,28 @@
 </script>
 
 <!-- Segmented light/dark/auto control (house pattern, cf. tracker/party). -->
-<div class="seg">
-  <button class:on={theme.mode === "light"} onclick={() => setTheme("light")}>
+<div class="seg" role="group" aria-label={i18n.m.appearance}>
+  <button
+    class:on={theme.mode === "light"}
+    aria-pressed={theme.mode === "light"}
+    onclick={() => setTheme("light")}
+  >
     <Sun size={15} />
     {i18n.m.light}
   </button>
-  <button class:on={theme.mode === "dark"} onclick={() => setTheme("dark")}>
+  <button
+    class:on={theme.mode === "dark"}
+    aria-pressed={theme.mode === "dark"}
+    onclick={() => setTheme("dark")}
+  >
     <Moon size={15} />
     {i18n.m.dark}
   </button>
-  <button class:on={theme.mode === "auto"} onclick={() => setTheme("auto")}>
+  <button
+    class:on={theme.mode === "auto"}
+    aria-pressed={theme.mode === "auto"}
+    onclick={() => setTheme("auto")}
+  >
     <Monitor size={15} />
     {i18n.m.auto}
   </button>
@@ -34,6 +46,7 @@
     align-items: center;
     justify-content: center;
     gap: 0.4em;
+    min-height: 44px;
     padding: 0.5em 0.4em;
     border: 1px solid var(--halo-border);
     border-radius: var(--halo-radius);
@@ -44,7 +57,8 @@
   }
   .seg button.on {
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     border-color: var(--halo-accent);
+    font-weight: 600;
   }
 </style>

@@ -3,11 +3,19 @@
 </script>
 
 <!-- Segmented language selector (same house pattern as ThemeToggle). -->
-<div class="seg">
-  <button class:on={i18n.lang === "en"} onclick={() => i18n.set("en")}>
+<div class="seg" role="group" aria-label={i18n.m.language}>
+  <button
+    class:on={i18n.lang === "en"}
+    aria-pressed={i18n.lang === "en"}
+    onclick={() => i18n.set("en")}
+  >
     {i18n.m.english}
   </button>
-  <button class:on={i18n.lang === "fi"} onclick={() => i18n.set("fi")}>
+  <button
+    class:on={i18n.lang === "fi"}
+    aria-pressed={i18n.lang === "fi"}
+    onclick={() => i18n.set("fi")}
+  >
     {i18n.m.finnish}
   </button>
 </div>
@@ -19,6 +27,7 @@
   }
   .seg button {
     flex: 1;
+    min-height: 44px;
     padding: 0.5em 0.4em;
     border: 1px solid var(--halo-border);
     border-radius: var(--halo-radius);
@@ -29,7 +38,8 @@
   }
   .seg button.on {
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     border-color: var(--halo-accent);
+    font-weight: 600;
   }
 </style>

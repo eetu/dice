@@ -204,7 +204,7 @@
             {#each lastRoll.dice as d, i (i)}<span>{d}</span>{/each}
           </div>
         {:else}
-          <p class="muted">Dice</p>
+          <p class="muted">{i18n.m.diceFallback}</p>
         {/if}
       </div>
     {:else}
@@ -287,7 +287,7 @@
     min-width: 1.9em;
     padding: 0.15em 0.4em;
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     font-family: var(--halo-font-heading);
     font-weight: 600;
     font-size: 1.25rem;

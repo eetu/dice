@@ -75,6 +75,28 @@
     if (n) onRename(n);
     editingId = null;
   }
+
+  // Keyboard reorder: focus a grip and press ↑/↓ to move that player. Keeps the
+  // drag feature operable without a pointer; announces the move for screen readers.
+  let announce = $state("");
+  function moveByKey(e: KeyboardEvent, id: string) {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    const from = list.findIndex((p) => p.id === id);
+    if (from < 0) return;
+    const to = e.key === "ArrowUp" ? from - 1 : from + 1;
+    if (to < 0 || to >= list.length) return;
+    const next = [...list];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    list = next;
+    onReorder(next.map((p) => p.id));
+    announce = i18n.m.movedTo(moved.name, to + 1, next.length);
+    // Keep focus on the moved row's grip after the DOM reorders.
+    requestAnimationFrame(() =>
+      (rowEls[to]?.querySelector(".handle") as HTMLElement | null)?.focus(),
+    );
+  }
 </script>
 
 <div class="players halo-card">
@@ -90,20 +112,27 @@
           class="handle"
           aria-label={i18n.m.dragReorder(p.name)}
           onpointerdown={(e) => startDrag(e, p.id)}
+          onkeydown={(e) => moveByKey(e, p.id)}
           ><GripVertical size={16} /></button
         >
         <span
           class="dot"
           class:on={p.connected}
-          title={p.connected ? "online" : "offline"}
+          role="img"
+          aria-label={p.connected ? i18n.m.online : i18n.m.offline}
+          title={p.connected ? i18n.m.online : i18n.m.offline}
         ></span>
         {#if editingId === p.id}
           <!-- svelte-ignore a11y_autofocus -->
           <input
             bind:value={draft}
             onblur={commit}
-            onkeydown={(e) => e.key === "Enter" && commit()}
+            onkeydown={(e) => {
+              if (e.key === "Enter") commit();
+              else if (e.key === "Escape") editingId = null;
+            }}
             maxlength="24"
+            aria-label={i18n.m.renameSelf}
             autofocus
           />
         {:else}
@@ -116,11 +145,13 @@
             >
           {/if}
         {/if}
-        {#if p.id === currentId}<span class="badge">turn</span>{/if}
+        {#if p.id === currentId}<span class="badge">{i18n.m.turnBadge}</span
+          >{/if}
       </li>
     {/each}
   </ul>
   <p class="hint">{i18n.m.dragHint}</p>
+  <p class="sr-only" aria-live="polite">{announce}</p>
 </div>
 
 <style>
@@ -169,26 +200,33 @@
   .handle {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
     background: none;
     border: none;
     color: var(--halo-text-muted);
     cursor: grab;
-    padding: 0 0.15rem;
+    padding: 0;
     touch-action: none;
     user-select: none;
   }
   .handle:active {
     cursor: grabbing;
   }
+  /* Offline is a hollow ring, online a filled dot — a shape cue so presence isn't
+     conveyed by colour alone (red/green). */
   .dot {
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
-    background: var(--halo-disconnected);
+    background: transparent;
+    box-shadow: inset 0 0 0 2px var(--halo-disconnected);
     flex: none;
   }
   .dot.on {
     background: var(--halo-connected);
+    box-shadow: none;
   }
   .pname {
     flex: 1;
@@ -209,10 +247,13 @@
   .edit {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
     background: none;
     border: none;
     color: var(--halo-text-muted);
-    padding: 0 0.2em;
+    padding: 0;
   }
   .badge {
     font-size: 0.7rem;
@@ -225,5 +266,16 @@
     margin: 0.75rem 0 0;
     font-size: 0.75rem;
     color: var(--halo-text-muted);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
 </style>

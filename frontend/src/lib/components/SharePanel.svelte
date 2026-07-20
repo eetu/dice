@@ -32,23 +32,31 @@
     {/if}
   </div>
   <div class="details">
-    <div class="label">{i18n.m.gameCode}</div>
+    <div class="label">
+      {copied === "code" ? i18n.m.codeCopied : i18n.m.gameCode}
+    </div>
     <button
       class="code"
       onclick={() => copy(code, "code")}
       title={i18n.m.copyCode}
+      aria-label={i18n.m.copyCode}
     >
       {code}
     </button>
     <button class="link" onclick={() => copy(joinUrl, "link")}>
-      {copied === "link"
-        ? i18n.m.linkCopied
-        : copied === "code"
-          ? i18n.m.codeCopied
-          : i18n.m.copyInviteLink}
+      {copied === "link" ? i18n.m.linkCopied : i18n.m.copyInviteLink}
     </button>
     <p class="hint">{i18n.m.shareHint}</p>
   </div>
+  <!-- Feedback lands on the control that was clicked (code → its label, link →
+    its own label); this hidden region voices it for screen readers. -->
+  <p class="sr-only" aria-live="polite">
+    {copied === "code"
+      ? i18n.m.codeCopied
+      : copied === "link"
+        ? i18n.m.linkCopied
+        : ""}
+  </p>
 </div>
 
 <style>
@@ -86,7 +94,12 @@
     font-size: 2.4rem;
     font-weight: 600;
     letter-spacing: 0.15em;
-    color: var(--halo-accent);
+    /* High-contrast text; accent kept as the underline (accent-as-text was ~2.4:1). */
+    color: var(--halo-text-main);
+    text-decoration: underline;
+    text-decoration-color: var(--halo-accent);
+    text-decoration-thickness: 3px;
+    text-underline-offset: 5px;
     background: none;
     border: none;
     padding: 0;
@@ -95,12 +108,24 @@
   .link {
     align-self: flex-start;
     background: var(--halo-accent-soft);
-    color: var(--halo-accent);
+    color: var(--halo-text-main);
     border: none;
     border-radius: var(--halo-radius-pill);
+    min-height: 44px;
     padding: 0.5em 0.9em;
     font-size: 0.9rem;
     font-weight: 500;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
   .hint {
     margin: 0.25rem 0 0;

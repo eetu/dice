@@ -74,6 +74,10 @@
   .x {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -0.5rem -0.5rem -0.5rem 0; /* absorb the larger hit area into the header */
     background: none;
     border: none;
     color: var(--halo-text-muted);

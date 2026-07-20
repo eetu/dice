@@ -187,7 +187,13 @@
       <span
         class="status"
         class:connected={socket.status === "connected"}
-        title={socket.status}
+        role="img"
+        aria-label={socket.status === "connected"
+          ? i18n.m.connected
+          : i18n.m.disconnected}
+        title={socket.status === "connected"
+          ? i18n.m.connected
+          : i18n.m.disconnected}
       ></span>
     </div>
     <span class="code-chip">{code}</span>
@@ -236,6 +242,7 @@
         <input
           bind:value={nameDraft}
           placeholder={i18n.m.namePlaceholder}
+          aria-label={i18n.m.yourName}
           maxlength="24"
           autocomplete="off"
           autofocus
@@ -332,16 +339,25 @@
           onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           maxlength="24"
           placeholder={i18n.m.namePlaceholder}
+          aria-label={i18n.m.yourName}
           autocomplete="off"
         />
       </div>
       <div class="setting-col">
         <span>{i18n.m.game}</span>
-        <div class="seg">
-          <button class:on={mode === "free"} onclick={() => setMode("free")}>
+        <div class="seg" role="group" aria-label={i18n.m.game}>
+          <button
+            class:on={mode === "free"}
+            aria-pressed={mode === "free"}
+            onclick={() => setMode("free")}
+          >
             {i18n.m.freeDice}
           </button>
-          <button class:on={mode === "liars"} onclick={() => setMode("liars")}>
+          <button
+            class:on={mode === "liars"}
+            aria-pressed={mode === "liars"}
+            onclick={() => setMode("liars")}
+          >
             {i18n.m.liarsDice}
           </button>
         </div>
@@ -457,7 +473,13 @@
     font-family: var(--halo-font-heading);
     font-weight: 600;
     letter-spacing: 0.15em;
-    color: var(--halo-accent);
+    /* High-contrast text with the accent kept as an underline cue (accent-on-light
+       as text was ~2.1:1). */
+    color: var(--halo-text-main);
+    text-decoration: underline;
+    text-decoration-color: var(--halo-accent);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
   }
   .status {
     width: 9px;
@@ -473,7 +495,8 @@
     border: 1px solid var(--halo-border);
     color: var(--halo-text-muted);
     border-radius: var(--halo-radius-pill);
-    padding: 0.35em 0.7em;
+    min-height: 44px;
+    padding: 0.35em 0.9em;
     font-size: 0.85rem;
   }
   .grid {
@@ -501,10 +524,13 @@
   .gear {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     background: none;
     border: 1px solid var(--halo-border);
     color: var(--halo-text-muted);
     border-radius: var(--halo-radius-pill);
+    min-width: 44px;
+    min-height: 44px;
     padding: 0.4em 0.6em;
   }
   .gear:hover {
@@ -542,8 +568,11 @@
     padding: 0.55em 0.7em;
   }
   .name-input:focus {
-    outline: none;
     border-color: var(--halo-accent);
+  }
+  /* Keep the global accent ring for keyboard focus; drop it only for pointer. */
+  .name-input:focus:not(:focus-visible) {
+    outline: none;
   }
   /* Segmented control (Game mode). */
   .seg {
@@ -552,6 +581,7 @@
   }
   .seg button {
     flex: 1;
+    min-height: 44px;
     padding: 0.55em 0.4em;
     border: 1px solid var(--halo-border);
     border-radius: var(--halo-radius);
@@ -561,8 +591,9 @@
   }
   .seg button.on {
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     border-color: var(--halo-accent);
+    font-weight: 600;
   }
   .stepper {
     display: flex;
@@ -570,8 +601,8 @@
     gap: 0.6rem;
   }
   .stepper button {
-    width: 2.1rem;
-    height: 2.1rem;
+    width: 2.75rem;
+    height: 2.75rem;
     border-radius: var(--halo-radius);
     border: 1px solid var(--halo-border);
     background: var(--halo-bg-light);
@@ -636,7 +667,8 @@
     color: var(--halo-text-muted);
     border: 1px solid var(--halo-border);
     border-radius: var(--halo-radius-pill);
-    padding: 0.35em 0.7em;
+    min-height: 44px;
+    padding: 0.35em 0.8em;
     font-size: 0.8rem;
   }
   .flip-btn:hover {
@@ -698,7 +730,7 @@
     display: inline-block;
     margin-top: 1rem;
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     text-decoration: none;
     border: none;
     border-radius: var(--halo-radius);
@@ -723,9 +755,10 @@
   }
   .namegate button {
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     border: none;
     border-radius: var(--halo-radius);
+    min-height: 44px;
     padding: 0 1.2em;
     font-weight: 600;
   }

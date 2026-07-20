@@ -28,6 +28,12 @@
     cursor: pointer;
     transition: background var(--halo-d-fast);
   }
+  /* Extend the tap target to ~44px tall without growing the visual pill. */
+  .switch::before {
+    content: "";
+    position: absolute;
+    inset: -10px -6px;
+  }
   .switch.on {
     background: var(--halo-accent);
   }

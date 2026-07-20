@@ -44,7 +44,7 @@
   .roll {
     width: 100%;
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     border: none;
     border-radius: var(--halo-radius);
     padding: 0.9em 1.5em;

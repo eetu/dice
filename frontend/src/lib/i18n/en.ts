@@ -24,6 +24,8 @@ export const en = {
   leaveBody:
     "You'll leave this game. Others keep playing — rejoin any time with the code.",
   connecting: "Connecting…",
+  connected: "connected",
+  disconnected: "disconnected",
   backToStart: "Back to start",
   retry: "Retry",
   notFoundTitle: "Game not found",
@@ -74,9 +76,15 @@ export const en = {
 
   // Players + history
   players: "Players",
-  dragHint: "Drag a row to change the turn order.",
+  dragHint:
+    "Drag a row — or focus the grip and press ↑/↓ — to set the turn order.",
   renameSelf: "Rename yourself",
-  dragReorder: (name: string) => `Drag to reorder ${name}`,
+  dragReorder: (name: string) => `Reorder ${name}`,
+  movedTo: (name: string, pos: number, total: number) =>
+    `${name} moved to ${pos} of ${total}`,
+  turnBadge: "turn",
+  online: "online",
+  offline: "offline",
   history: "History",
   historyEmpty: "Rolls will appear here.",
 

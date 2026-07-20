@@ -25,6 +25,8 @@ export const fi: Catalog = {
   leaveBody:
     "Poistut tästä pelistä. Muut jatkavat — voit liittyä uudelleen koodilla.",
   connecting: "Yhdistetään…",
+  connected: "yhteydessä",
+  disconnected: "ei yhteyttä",
   backToStart: "Takaisin alkuun",
   retry: "Yritä uudelleen",
   notFoundTitle: "Peliä ei löytynyt",
@@ -75,9 +77,15 @@ export const fi: Catalog = {
 
   // Players + history
   players: "Pelaajat",
-  dragHint: "Vedä riviä muuttaaksesi vuorojärjestystä.",
+  dragHint:
+    "Vedä riviä — tai valitse kahva ja paina ↑/↓ — muuttaaksesi vuorojärjestystä.",
   renameSelf: "Nimeä itsesi uudelleen",
-  dragReorder: (name: string) => `Vedä järjestääksesi ${name}`,
+  dragReorder: (name: string) => `Järjestä ${name}`,
+  movedTo: (name: string, pos: number, total: number) =>
+    `${name} siirretty kohtaan ${pos}/${total}`,
+  turnBadge: "vuoro",
+  online: "paikalla",
+  offline: "poissa",
   history: "Historia",
   historyEmpty: "Heitot näkyvät tässä.",
 

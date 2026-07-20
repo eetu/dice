@@ -2,6 +2,8 @@
   // Mobile-first Liar's Dice board (Classic quantity+face rules). Reads the
   // personalized `liars` view (your own cup in full, others by count) + player
   // names from the game snapshot; reports intent via callbacks.
+  import Trophy from "@lucide/svelte/icons/trophy";
+
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { game } from "$lib/stores/game.svelte";
   import { liars } from "$lib/stores/liars.svelte";
@@ -101,7 +103,7 @@
     <p class="muted">{i18n.m.dealing}</p>
   {:else if view.phase === "over"}
     <div class="over">
-      <p class="crown">🏆</p>
+      <p class="crown"><Trophy size={44} /></p>
       <h2>{i18n.m.liarsWin(nameOf(view.winner), view.winner === myId)}</h2>
       <button class="primary" onclick={onNewMatch}>{i18n.m.playAgain}</button>
     </div>
@@ -209,6 +211,7 @@
                   <button
                     class="fp"
                     class:sel={draftFace === f}
+                    aria-pressed={draftFace === f}
                     aria-label={i18n.m.faceAria(f)}
                     onclick={() => (draftFace = f)}>{@render face(f)}</button
                   >
@@ -412,8 +415,8 @@
     gap: 0.5rem;
   }
   .qty button {
-    width: 2.6rem;
-    height: 2.6rem;
+    width: 2.75rem;
+    height: 2.75rem;
     font-size: 1.4rem;
     border-radius: var(--halo-radius);
     border: 1px solid var(--halo-border);
@@ -422,6 +425,7 @@
   }
   .qty button:disabled {
     opacity: 0.4;
+    cursor: default;
   }
   .qty .n {
     min-width: 1.5rem;
@@ -435,14 +439,21 @@
     gap: 0.3rem;
   }
   .fp {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
     padding: 0.3rem;
     border-radius: var(--halo-radius);
     border: 1px solid var(--halo-border);
     background: var(--halo-bg-light);
   }
+  /* Selected face: accent tint + a thicker accent ring so it's not hue-only. */
   .fp.sel {
     border-color: var(--halo-accent);
     background: var(--halo-accent-soft);
+    box-shadow: inset 0 0 0 2px var(--halo-accent);
   }
   .actions {
     display: flex;
@@ -455,7 +466,7 @@
     justify-content: center;
     gap: 0.4em;
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     border: none;
     border-radius: var(--halo-radius);
     padding: 0.9em 1em;
@@ -465,6 +476,7 @@
   .actions .bid:disabled {
     background: var(--halo-off-bg);
     color: var(--halo-text-muted);
+    cursor: default;
   }
   .actions .liar {
     flex: 0 0 auto;
@@ -478,6 +490,7 @@
   }
   .actions .liar:disabled {
     opacity: 0.4;
+    cursor: default;
   }
   .waiting {
     text-align: center;
@@ -495,8 +508,9 @@
     align-items: center;
   }
   .crown {
-    font-size: 2.5rem;
     margin: 0;
+    color: var(--halo-accent);
+    line-height: 1;
   }
   .over h2 {
     margin: 0;
@@ -504,7 +518,7 @@
   .over .primary,
   .reveal .primary {
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     border: none;
     border-radius: var(--halo-radius);
     padding: 0.8em 1.5em;
@@ -552,11 +566,21 @@
     width: 0.22rem;
     height: 0.22rem;
   }
+  /* On the accent bid button: a subtle dark tile with dark (on-accent) pips. */
   .actions .bid .die {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.14);
     box-shadow: none;
   }
   .actions .bid .pip.on {
-    background: #fff;
+    background: var(--halo-on-accent);
+  }
+  /* When disabled the button turns grey — restore a normal readable die (the old
+     white-pips-on-grey rendered as an invisible die). */
+  .actions .bid:disabled .die {
+    background: var(--halo-bg-main);
+    box-shadow: inset 0 0 0 1px var(--halo-border);
+  }
+  .actions .bid:disabled .pip.on {
+    background: var(--halo-text-muted);
   }
 </style>

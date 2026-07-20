@@ -86,6 +86,7 @@
       <input
         bind:value={joinCode}
         placeholder={i18n.m.codePlaceholder}
+        aria-label={i18n.m.gameCode}
         maxlength="5"
         autocapitalize="characters"
         autocomplete="off"
@@ -95,7 +96,7 @@
     </form>
 
     {#if error}
-      <p class="error">{error}</p>
+      <p class="error" role="alert">{error}</p>
     {/if}
   </main>
 
@@ -147,6 +148,7 @@
   input {
     font-family: inherit;
     font-size: 1rem;
+    min-height: 44px;
     padding: 0.6em 0.75em;
     border: 1px solid var(--halo-border);
     border-radius: var(--halo-radius);
@@ -155,9 +157,10 @@
   }
   .primary {
     background: var(--halo-accent);
-    color: #fff;
+    color: var(--halo-on-accent);
     border: none;
     border-radius: var(--halo-radius);
+    min-height: 44px;
     padding: 0.8em;
     font-size: 1rem;
     font-weight: 600;
@@ -200,6 +203,7 @@
     color: var(--halo-text-main);
     border: none;
     border-radius: var(--halo-radius);
+    min-height: 44px;
     padding: 0 1.2em;
     font-weight: 600;
   }
