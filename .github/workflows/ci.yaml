@@ -85,6 +85,14 @@ jobs:
       - run: cargo build # debug dice-backend for the Playwright webServer
       - run: cd frontend && node .yarn/releases/yarn-*.cjs playwright install --with-deps chromium
       - run: cd frontend && node .yarn/releases/yarn-*.cjs e2e
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            frontend/test-results
+            frontend/playwright-report
+          retention-days: 7
 
   # Single always-run gate for branch protection (filtered jobs skip, they don't
   # fail — never require them by name or a PR strands at "waiting for status").

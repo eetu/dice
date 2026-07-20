@@ -6,6 +6,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "e2e",
   fullyParallel: false,
+  // Serialize on CI so at most one test's two contexts run at once — keeps the
+  // shared runner from thrashing and makes failures deterministic.
+  workers: process.env.CI ? 1 : undefined,
   timeout: 30_000,
   use: {
     baseURL: "http://127.0.0.1:3099",

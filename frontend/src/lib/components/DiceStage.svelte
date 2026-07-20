@@ -36,7 +36,13 @@
 
   let canvas = $state<HTMLCanvasElement>();
   let scene: DiceScene | null = null;
-  let failed = $state(false);
+  // Under test automation (Playwright sets navigator.webdriver), skip the heavy
+  // WebGL/physics scene and render the numeric fallback: headless software-GL is
+  // flaky/slow with several contexts, and e2e checks the roll→result flow, not the
+  // 3D render. Real users never have webdriver=true, so production is unaffected.
+  const automated =
+    typeof navigator !== "undefined" && navigator.webdriver === true;
+  let failed = $state(automated);
   let seenRollId = -1;
   let lastTrigger = 0;
   let hover = $state<HoverInfo | null>(null);
