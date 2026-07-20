@@ -59,6 +59,7 @@ export const en = {
   game: "Game",
   freeDice: "Free dice",
   liarsDice: "Liar's Dice",
+  yatzyDice: "Yatzy",
   diceCount: "Dice count",
   diceSelectLabel: "Dice",
   tableSelectLabel: "Table",
@@ -130,6 +131,41 @@ export const en = {
     `${caller} called liar — there ${actual === 1 ? "was" : "were"} ${actual}, so ${
       bidTrue ? "the bid held" : "the bid was a bluff"
     }. ${loser} lose${loserIsYou ? "" : "s"} a die.`,
+
+  // Yatzy
+  yatzyRoll: (n: number) => (n === 3 ? "Roll" : `Roll (${n} left)`),
+  yatzyRollAll: "Roll all five",
+  yatzyRollsLeft: (n: number) =>
+    `${n} roll${n === 1 ? "" : "s"} left · tap dice to hold`,
+  yatzyHoldHint: "Tap a die to hold it",
+  yatzyPickBox: "Pick a box to score",
+  yatzyTapToScore: "Tap a box to score it here",
+  yatzyUpper: "Upper",
+  yatzyBonus: "Bonus",
+  yatzyTotal: "Total",
+  yatzyWaitingRoll: (name: string) => `Waiting for ${name} to roll…`,
+  yatzyYourTurn: "Your turn — roll",
+  yatzyScratchHint: "No roll left — you must fill a box (0 is allowed)",
+  yatzyWin: (name: string, isYou: boolean) =>
+    isYou ? "You win!" : `${name} wins!`,
+  // Category names, keyed by YatzyCat.
+  yatzyCats: {
+    ones: "Ones",
+    twos: "Twos",
+    threes: "Threes",
+    fours: "Fours",
+    fives: "Fives",
+    sixes: "Sixes",
+    onePair: "One pair",
+    twoPairs: "Two pairs",
+    threeKind: "Three of a kind",
+    fourKind: "Four of a kind",
+    smallStraight: "Small straight",
+    largeStraight: "Large straight",
+    fullHouse: "Full house",
+    chance: "Chance",
+    yatzy: "Yatzy",
+  } as Record<string, string>,
 
   // Table (deck) names, keyed by deck id.
   decks: {

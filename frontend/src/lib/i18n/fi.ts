@@ -60,6 +60,7 @@ export const fi: Catalog = {
   game: "Peli",
   freeDice: "Vapaat nopat",
   liarsDice: "Valehtelijan nopat",
+  yatzyDice: "Yatzy",
   diceCount: "Noppien määrä",
   diceSelectLabel: "Nopat",
   tableSelectLabel: "Pöytä",
@@ -133,6 +134,41 @@ export const fi: Catalog = {
     `${caller}: valehtelija! Niitä oli ${actual}, joten ${
       bidTrue ? "tarjous piti paikkansa" : "tarjous oli bluffi"
     }. ${loser} ${loserIsYou ? "menetät" : "menettää"} nopan.`,
+
+  // Yatzy
+  yatzyRoll: (n: number) => (n === 3 ? "Heitä" : `Heitä (${n} jäljellä)`),
+  yatzyRollAll: "Heitä kaikki viisi",
+  yatzyRollsLeft: (n: number) =>
+    `${n} heitto${n === 1 ? "" : "a"} jäljellä · napauta pitääksesi`,
+  yatzyHoldHint: "Napauta noppaa pitääksesi sen",
+  yatzyPickBox: "Valitse ruutu pisteytettäväksi",
+  yatzyTapToScore: "Napauta ruutua pisteyttääksesi tähän",
+  yatzyUpper: "Yläosa",
+  yatzyBonus: "Bonus",
+  yatzyTotal: "Yhteensä",
+  yatzyWaitingRoll: (name: string) => `Odotetaan, että ${name} heittää…`,
+  yatzyYourTurn: "Sinun vuorosi — heitä",
+  yatzyScratchHint: "Ei heittoja jäljellä — täytä ruutu (0 sallittu)",
+  yatzyWin: (name: string, isYou: boolean) =>
+    isYou ? "Voitit!" : `${name} voittaa!`,
+  // Category names, keyed by YatzyCat.
+  yatzyCats: {
+    ones: "Ykköset",
+    twos: "Kakkoset",
+    threes: "Kolmoset",
+    fours: "Neloset",
+    fives: "Vitoset",
+    sixes: "Kutoset",
+    onePair: "Pari",
+    twoPairs: "Kaksi paria",
+    threeKind: "Kolme samaa",
+    fourKind: "Neljä samaa",
+    smallStraight: "Pieni suora",
+    largeStraight: "Suuri suora",
+    fullHouse: "Täyskäsi",
+    chance: "Sattuma",
+    yatzy: "Yatzy",
+  } as Record<string, string>,
 
   // Table (deck) names
   decks: {

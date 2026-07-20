@@ -46,10 +46,21 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   player (phone standby, flaky wifi). `skipTurn` is the manual override to move
   past someone genuinely gone. The client also holds a screen wake lock while the
   game is foregrounded so a slow round doesn't sleep the device (and drop them).
+- **Built-in games** (`mode`, room-wide): `free` (the plain turn-based roller),
+  `liars` (Liar's Dice — hidden per-player dice, personalized `liars` view),
+  `yatzy` (Nordic Yatzy — public dice, up to 3 rolls/turn with holds, 15-box
+  scorecard, scoring in `room::yatzy_score_cat`). The host picks the game in the
+  lobby (create takes an optional `mode`) or via Settings (`setMode`). A `setMode`
+  or a join to a **pristine** (not-yet-started) match (re)deals with everyone
+  present (`on_player_joined`); joining a match already in progress spectates.
 - **WS protocol** (`backend/src/room.rs`): server→client `sync` / `rolled` /
-  `presence`; client→server `roll` / `reorder` / `setDiceCount` / `setName` /
-  `setDiceTheme` / `setDeck` / `skipTurn` / `leave`. All fields camelCase; TS mirror in
-  `frontend/src/lib/api.ts` — keep the two in sync by hand (no codegen).
+  `presence` / `liarsChanged`(internal) / `liars` / `yatzy`; client→server `roll`
+  / `reorder` / `setDiceCount` / `setName` / `setDiceTheme` / `setDeck` /
+  `skipTurn` / `setMode` / `bid` / `callLiar` / `nextRound` / `yatzyRoll` /
+  `yatzyHold` / `yatzyScore` / `leave`. Liar's dice are hidden — the server
+  broadcasts a `liarsChanged` ping and each socket rebuilds its own `liars` view;
+  Yatzy is public so its `yatzy` view is broadcast verbatim. All fields camelCase;
+  TS mirror in `frontend/src/lib/api.ts` — keep the two in sync by hand (no codegen).
 - **Dice theme is room-wide** (`setDiceTheme`, in the snapshot); UI light/dark is
   a personal `data-theme` preference. `nixie` theme renders glowbox tubes instead
   of the 3D mesh.

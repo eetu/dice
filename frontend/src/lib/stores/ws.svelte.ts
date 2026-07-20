@@ -7,6 +7,7 @@ import type { ClientMsg, ServerMsg } from "$lib/api";
 
 import { game } from "./game.svelte";
 import { liars } from "./liars.svelte";
+import { yatzy } from "./yatzy.svelte";
 
 function wsUrl(code: string, token: string): string {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -28,6 +29,9 @@ function dispatch(msg: ServerMsg): void {
       break;
     case "liars":
       liars.apply(msg.view);
+      break;
+    case "yatzy":
+      yatzy.apply(msg.view);
       break;
     // "liarsChanged" is server-internal — clients only get the personalized
     // "liars" view above.

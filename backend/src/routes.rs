@@ -44,16 +44,29 @@ struct NameBody {
     name: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct CreateBody {
+    name: Option<String>,
+    /// Optional game to start the room in ("free" | "liars" | "yatzy"). The host
+    /// picks it in the lobby; unknown/absent = free.
+    mode: Option<String>,
+}
+
 async fn create_game(
     State(st): State<AppState>,
     ClientIp(ip): ClientIp,
-    body: Option<Json<NameBody>>,
+    body: Option<Json<CreateBody>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     // Per-IP throttle: the main lever against one source filling `max_rooms`.
     if !st.guard.create.allow(ip) {
         return Err(AppError::TooMany);
     }
-    let name = body.and_then(|b| b.0.name).unwrap_or_default();
+    let body = body.map(|b| b.0);
+    let name = body
+        .as_ref()
+        .and_then(|b| b.name.clone())
+        .unwrap_or_default();
+    let mode = body.and_then(|b| b.mode);
     let mut map = st.rooms.lock().unwrap();
     // Bound memory on this public, un-authed endpoint.
     if map.len() >= st.cfg.max_rooms {
@@ -61,7 +74,18 @@ async fn create_game(
     }
     let code = gen_code(&map);
     let room = Arc::new(Mutex::new(Room::new(code.clone(), st.cfg.max_dice)));
-    let (player_id, token) = room.lock().unwrap().add_player(name);
+    let (player_id, token) = {
+        let mut r = room.lock().unwrap();
+        let ids = r.add_player(name);
+        // Start the chosen game up front (free needs nothing). No subscribers yet,
+        // so the broadcasts are no-ops; the host's first connect gets the view.
+        if let Some(m) = mode.as_deref() {
+            if m == "liars" || m == "yatzy" {
+                r.set_game_mode(m);
+            }
+        }
+        ids
+    };
     map.insert(code.clone(), room);
     Ok(Json(
         json!({ "code": code, "playerId": player_id, "token": token }),
@@ -92,6 +116,9 @@ async fn join_game(
             return Err(AppError::RoomFull);
         }
         let ids = r.add_player(name);
+        // If a not-yet-started Liar's/Yatzy match is set, re-deal to include the
+        // newcomer (the "create → friends join → play" flow); else they spectate.
+        r.on_player_joined();
         // Let existing clients see the newcomer (grayed until they connect).
         r.broadcast_sync();
         ids

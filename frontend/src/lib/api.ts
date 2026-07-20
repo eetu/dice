@@ -19,7 +19,7 @@ export type RollRecord = {
 };
 
 /** Which game the room is playing. Mirrors `room::Mode`. */
-export type Mode = "free" | "liars";
+export type Mode = "free" | "liars" | "yatzy";
 
 /** Full room state. Mirrors `room::Snapshot`. */
 export type Snapshot = {
@@ -81,6 +81,52 @@ export type LiarsView = {
   startDice: number;
 };
 
+// ---- Yatzy (Nordic; mirrors room.rs) ----
+
+/** A Yatzy scorecard box id. Mirrors `room::YatzyCat`. */
+export type YatzyCat =
+  | "ones"
+  | "twos"
+  | "threes"
+  | "fours"
+  | "fives"
+  | "sixes"
+  | "onePair"
+  | "twoPairs"
+  | "threeKind"
+  | "fourKind"
+  | "smallStraight"
+  | "largeStraight"
+  | "fullHouse"
+  | "chance"
+  | "yatzy";
+
+/** One scored (or previewed) box. */
+export type YatzyCell = { category: YatzyCat; value: number };
+
+/** A player's public scorecard. Mirrors `room::YatzyCard`. */
+export type YatzyCard = {
+  playerId: string;
+  cells: YatzyCell[];
+  upper: number;
+  bonus: number;
+  total: number;
+};
+
+/** Public Yatzy state — the same for every client. Mirrors `room::YatzyView`. */
+export type YatzyView = {
+  order: string[];
+  currentPlayerId: string | null;
+  dice: number[];
+  held: boolean[];
+  rollsLeft: number;
+  rolled: boolean;
+  cards: YatzyCard[];
+  preview: YatzyCell[];
+  winner: string | null;
+  over: boolean;
+};
+
 /** Server → client WS messages. Mirrors `room::ServerMsg`. */
 export type ServerMsg =
   | { type: "sync"; state: Snapshot }
@@ -94,7 +140,8 @@ export type ServerMsg =
   // `liarsChanged` is a server-internal rebuild signal; clients only receive the
   // personalized `liars` view below (kept in the union for completeness).
   | { type: "liarsChanged" }
-  | { type: "liars"; view: LiarsView };
+  | { type: "liars"; view: LiarsView }
+  | { type: "yatzy"; view: YatzyView };
 
 /** Client → server WS messages. Mirrors `room::ClientMsg`. */
 export type ClientMsg =
@@ -109,6 +156,9 @@ export type ClientMsg =
   | { type: "bid"; quantity: number; face: number }
   | { type: "callLiar" }
   | { type: "nextRound" }
+  | { type: "yatzyRoll" }
+  | { type: "yatzyHold"; index: number }
+  | { type: "yatzyScore"; category: YatzyCat }
   | { type: "leave" };
 
 /** Response from create / join. */
@@ -156,10 +206,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   status: () => request<StatusResponse>("/status"),
-  createGame: (name: string) =>
+  createGame: (name: string, mode: Mode = "free") =>
     request<Credentials>("/api/games", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, mode }),
     }),
   joinGame: (code: string, name: string) =>
     request<Credentials>(`/api/games/${encodeURIComponent(code)}/join`, {

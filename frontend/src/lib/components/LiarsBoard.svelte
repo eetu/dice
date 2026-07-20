@@ -436,24 +436,30 @@
   }
   .facepick {
     display: flex;
-    gap: 0.3rem;
+    gap: 0.4rem;
   }
+  /* The die itself is the button — no wrapping border/background box. */
   .fp {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     min-width: 44px;
     min-height: 44px;
-    padding: 0.3rem;
-    border-radius: var(--halo-radius);
-    border: 1px solid var(--halo-border);
-    background: var(--halo-bg-light);
+    padding: 0;
+    border: none;
+    background: none;
+    border-radius: 10px;
+    transition:
+      transform var(--halo-d-fast),
+      box-shadow var(--halo-d-fast);
   }
-  /* Selected face: accent tint + a thicker accent ring so it's not hue-only. */
+  /* Selected face: lift + accent ring on the die itself (not hue-only). */
   .fp.sel {
-    border-color: var(--halo-accent);
-    background: var(--halo-accent-soft);
+    transform: translateY(-4px);
+  }
+  .fp.sel .die {
     box-shadow: inset 0 0 0 2px var(--halo-accent);
+    background: var(--halo-accent-soft);
   }
   .actions {
     display: flex;
@@ -550,9 +556,9 @@
     width: 0.32rem;
     height: 0.32rem;
   }
-  /* Smaller dice inside the bid line + face picker + reveal + button. */
+  /* Smaller dice inside the bid line + reveal + bid button. The face picker uses
+     the full-size die (it's now the tap target itself, no surrounding box). */
   .bidline .die,
-  .fp .die,
   .rdice .die,
   .actions .bid .die {
     width: 1.6rem;
@@ -560,7 +566,6 @@
     padding: 0.18rem;
   }
   .bidline .pip.on,
-  .fp .pip.on,
   .rdice .pip.on,
   .actions .bid .pip.on {
     width: 0.22rem;

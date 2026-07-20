@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import { api, ApiError } from "$lib/api";
+  import { api, ApiError, type Mode } from "$lib/api";
   import LangToggle from "$lib/components/LangToggle.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import Wordmark from "$lib/components/Wordmark.svelte";
@@ -10,8 +10,15 @@
 
   let name = $state(session.name);
   let joinCode = $state("");
+  let mode = $state<Mode>("free"); // which game to start when creating
   let busy = $state(false);
   let error = $state("");
+
+  const GAMES: { mode: Mode; label: () => string }[] = [
+    { mode: "free", label: () => i18n.m.freeDice },
+    { mode: "liars", label: () => i18n.m.liarsDice },
+    { mode: "yatzy", label: () => i18n.m.yatzyDice },
+  ];
 
   async function create() {
     if (busy) return;
@@ -19,7 +26,7 @@
     error = "";
     session.setName(name.trim());
     try {
-      const creds = await api.createGame(name.trim());
+      const creds = await api.createGame(name.trim(), mode);
       session.saveCreds(creds.code, {
         playerId: creds.playerId,
         token: creds.token,
@@ -69,6 +76,22 @@
         maxlength="24"
       />
     </label>
+
+    <div class="field">
+      <span>{i18n.m.game}</span>
+      <div class="seg" role="group" aria-label={i18n.m.game}>
+        {#each GAMES as g (g.mode)}
+          <button
+            type="button"
+            class:on={mode === g.mode}
+            aria-pressed={mode === g.mode}
+            onclick={() => (mode = g.mode)}
+          >
+            {g.label()}
+          </button>
+        {/each}
+      </div>
+    </div>
 
     <button class="primary" onclick={create} disabled={busy}>
       {i18n.m.createGame}
@@ -154,6 +177,28 @@
     border-radius: var(--halo-radius);
     background: var(--halo-bg-light);
     color: var(--halo-text-main);
+  }
+  /* Game selector (segmented). */
+  .seg {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .seg button {
+    flex: 1;
+    min-height: 44px;
+    padding: 0.5em 0.3em;
+    border: 1px solid var(--halo-border);
+    border-radius: var(--halo-radius);
+    background: var(--halo-bg-light);
+    color: var(--halo-text-main);
+    font-size: 0.85rem;
+    transition: background var(--halo-d-fast);
+  }
+  .seg button.on {
+    background: var(--halo-accent);
+    color: var(--halo-on-accent);
+    border-color: var(--halo-accent);
+    font-weight: 600;
   }
   .primary {
     background: var(--halo-accent);

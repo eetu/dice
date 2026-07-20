@@ -7,7 +7,7 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
-  import { api, ApiError, type Mode } from "$lib/api";
+  import { api, ApiError, type Mode, type YatzyCat } from "$lib/api";
   import DiceStage from "$lib/components/DiceStage.svelte";
   import LangToggle from "$lib/components/LangToggle.svelte";
   import LiarsBoard from "$lib/components/LiarsBoard.svelte";
@@ -20,6 +20,7 @@
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import Wordmark from "$lib/components/Wordmark.svelte";
+  import YatzyBoard from "$lib/components/YatzyBoard.svelte";
   import { DECKS } from "$lib/dice/decks";
   import { THEMES } from "$lib/dice/themes";
   import { i18n } from "$lib/i18n/i18n.svelte";
@@ -30,6 +31,7 @@
   import { shake } from "$lib/stores/shake.svelte";
   import { wakeLock } from "$lib/stores/wakelock";
   import { socket } from "$lib/stores/ws.svelte";
+  import { yatzy } from "$lib/stores/yatzy.svelte";
 
   const code = $derived((page.params.code ?? "").toUpperCase());
 
@@ -84,6 +86,7 @@
       socket.disconnect();
       game.reset();
       liars.reset();
+      yatzy.reset();
       wakeLock.disable();
     };
   });
@@ -156,6 +159,15 @@
   }
   function nextRound() {
     socket.send({ type: "nextRound" });
+  }
+  function yatzyRoll() {
+    socket.send({ type: "yatzyRoll" });
+  }
+  function yatzyHold(index: number) {
+    socket.send({ type: "yatzyHold", index });
+  }
+  function yatzyScore(category: YatzyCat) {
+    socket.send({ type: "yatzyScore", category });
   }
   function rename(name: string) {
     session.setName(name);
@@ -263,6 +275,16 @@
           onNewMatch={() => setMode("liars")}
         />
       </div>
+    {:else if mode === "yatzy"}
+      <div class="board">
+        <YatzyBoard
+          {myId}
+          onRoll={yatzyRoll}
+          onHold={yatzyHold}
+          onScore={yatzyScore}
+          onNewMatch={() => setMode("yatzy")}
+        />
+      </div>
     {:else}
       <div class="grid">
         <section class="stage-col">
@@ -359,6 +381,13 @@
             onclick={() => setMode("liars")}
           >
             {i18n.m.liarsDice}
+          </button>
+          <button
+            class:on={mode === "yatzy"}
+            aria-pressed={mode === "yatzy"}
+            onclick={() => setMode("yatzy")}
+          >
+            {i18n.m.yatzyDice}
           </button>
         </div>
       </div>
@@ -512,8 +541,10 @@
     min-height: 0;
     display: flex;
   }
-  .board :global(.liars) {
+  .board :global(.liars),
+  .board :global(.yatzy) {
     flex: 1;
+    min-width: 0;
   }
   .stage-col {
     min-height: 0;

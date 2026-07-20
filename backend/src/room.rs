@@ -71,12 +71,14 @@ pub struct RollRecord {
 }
 
 /// Which game the room is playing. `free` = the plain roller (default); `liars` =
-/// Liar's Dice (hidden per-player dice, bidding + calling).
+/// Liar's Dice (hidden per-player dice, bidding + calling); `yatzy` = Nordic
+/// Yatzy (public dice, up to 3 rolls/turn with holds, a 15-box scorecard).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Mode {
     Free,
     Liars,
+    Yatzy,
 }
 
 /// A Liar's Dice bid: "at least `quantity` dice showing `face`" across ALL cups.
@@ -145,6 +147,97 @@ pub struct LiarsView {
     pub start_dice: u8,
 }
 
+/// A Yatzy scorecard box (Nordic 15-category variant). Serialized camelCase; also
+/// deserialized (the client names one in `YatzyScore`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum YatzyCat {
+    Ones,
+    Twos,
+    Threes,
+    Fours,
+    Fives,
+    Sixes,
+    OnePair,
+    TwoPairs,
+    ThreeKind,
+    FourKind,
+    SmallStraight,
+    LargeStraight,
+    FullHouse,
+    Chance,
+    Yatzy,
+}
+
+/// The six upper-section boxes; their subtotal drives the +50 bonus at ≥63.
+const YATZY_UPPER: [YatzyCat; 6] = [
+    YatzyCat::Ones,
+    YatzyCat::Twos,
+    YatzyCat::Threes,
+    YatzyCat::Fours,
+    YatzyCat::Fives,
+    YatzyCat::Sixes,
+];
+
+/// All 15 boxes, in card order.
+const YATZY_ALL: [YatzyCat; 15] = [
+    YatzyCat::Ones,
+    YatzyCat::Twos,
+    YatzyCat::Threes,
+    YatzyCat::Fours,
+    YatzyCat::Fives,
+    YatzyCat::Sixes,
+    YatzyCat::OnePair,
+    YatzyCat::TwoPairs,
+    YatzyCat::ThreeKind,
+    YatzyCat::FourKind,
+    YatzyCat::SmallStraight,
+    YatzyCat::LargeStraight,
+    YatzyCat::FullHouse,
+    YatzyCat::Chance,
+    YatzyCat::Yatzy,
+];
+
+/// One scored (or previewed) box.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YatzyCell {
+    pub category: YatzyCat,
+    pub value: u16,
+}
+
+/// A player's scorecard as seen by everyone (Yatzy dice are public).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YatzyCard {
+    pub player_id: String,
+    /// Only the boxes this player has already filled (value may be 0 = scratched).
+    pub cells: Vec<YatzyCell>,
+    pub upper: u16,
+    pub bonus: u16,
+    pub total: u16,
+}
+
+/// The public Yatzy view — same for every client (unlike Liar's Dice, nothing is
+/// hidden). Broadcast on every change.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YatzyView {
+    pub order: Vec<String>,
+    pub current_player_id: Option<String>,
+    /// The 5 dice; empty until the current player's first roll this turn.
+    pub dice: Vec<u8>,
+    pub held: Vec<bool>,
+    pub rolls_left: u8,
+    pub rolled: bool,
+    pub cards: Vec<YatzyCard>,
+    /// What each still-open box would score for the current dice (empty until a
+    /// roll). Lets the client show a live preview without duplicating the rules.
+    pub preview: Vec<YatzyCell>,
+    pub winner: Option<String>,
+    pub over: bool,
+}
+
 /// Full room state — sent on connect and after any structural change.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,6 +276,8 @@ pub enum ServerMsg {
     LiarsChanged,
     /// A personalized Liar's Dice view — built + sent per-socket, never broadcast.
     Liars { view: LiarsView },
+    /// The public Yatzy view — broadcast to everyone (nothing hidden).
+    Yatzy { view: YatzyView },
 }
 
 /// Client → server messages.
@@ -214,7 +309,8 @@ pub enum ClientMsg {
     },
     /// Force the turn forward (e.g. the current player is offline).
     SkipTurn,
-    /// Switch the room's game mode ("free" | "liars"); starts a fresh match.
+    /// Switch the room's game mode ("free" | "liars" | "yatzy"); starts a fresh
+    /// match.
     SetMode {
         mode: String,
     },
@@ -227,6 +323,16 @@ pub enum ClientMsg {
     CallLiar,
     /// Liar's Dice: from the reveal, deal the next round.
     NextRound,
+    /// Yatzy: (re-)roll every die that isn't held (all dice on the first roll).
+    YatzyRoll,
+    /// Yatzy: toggle a die's hold between rolls (index 0..=4).
+    YatzyHold {
+        index: u8,
+    },
+    /// Yatzy: assign the current dice to a still-open box (ends the turn).
+    YatzyScore {
+        category: YatzyCat,
+    },
     /// Remove yourself from the game.
     Leave,
 }
@@ -284,6 +390,156 @@ impl LiarsState {
         }
         self.order.get(self.turn).cloned()
     }
+    /// No one has acted yet (round 1, no bid) — safe to re-deal so a new joiner is
+    /// included instead of left spectating.
+    fn pristine(&self) -> bool {
+        self.phase == LiarsPhase::Bidding
+            && self.bid.is_none()
+            && self.reveal.is_none()
+            && self.dice.values().all(|d| d.len() as u8 == self.start_dice)
+    }
+}
+
+/// Score a single Yatzy box for a set of dice (Nordic rules). Pure — the whole
+/// ruleset lives here and is unit-tested + surfaced to the client as `preview`.
+fn yatzy_score_cat(cat: YatzyCat, dice: &[u8]) -> u16 {
+    // counts[f] = how many dice show face f (1..=6).
+    let mut counts = [0u16; 7];
+    for &d in dice {
+        if (1..=6).contains(&d) {
+            counts[d as usize] += 1;
+        }
+    }
+    let sum: u16 = dice.iter().map(|&d| d as u16).sum();
+    let n_of = |need: u16| (1..=6u16).rev().find(|&f| counts[f as usize] >= need);
+    use YatzyCat::*;
+    match cat {
+        Ones => counts[1],
+        Twos => counts[2] * 2,
+        Threes => counts[3] * 3,
+        Fours => counts[4] * 4,
+        Fives => counts[5] * 5,
+        Sixes => counts[6] * 6,
+        // Sum of the dice forming the highest single pair.
+        OnePair => n_of(2).map(|f| f * 2).unwrap_or(0),
+        // Two DISTINCT pairs — sum of all four dice (0 if there aren't two).
+        TwoPairs => {
+            let pairs: Vec<u16> = (1..=6u16)
+                .rev()
+                .filter(|&f| counts[f as usize] >= 2)
+                .collect();
+            if pairs.len() >= 2 {
+                (pairs[0] + pairs[1]) * 2
+            } else {
+                0
+            }
+        }
+        ThreeKind => n_of(3).map(|f| f * 3).unwrap_or(0),
+        FourKind => n_of(4).map(|f| f * 4).unwrap_or(0),
+        SmallStraight => {
+            if (1..=5).all(|f| counts[f] == 1) {
+                15
+            } else {
+                0
+            }
+        }
+        LargeStraight => {
+            if (2..=6).all(|f| counts[f] == 1) {
+                20
+            } else {
+                0
+            }
+        }
+        // A triple + a pair of DIFFERENT faces (strict: five-of-a-kind is not one).
+        FullHouse => {
+            let trip = (1..=6).any(|f| counts[f] == 3);
+            let pair = (1..=6).any(|f| counts[f] == 2);
+            if trip && pair {
+                sum
+            } else {
+                0
+            }
+        }
+        Chance => sum,
+        Yatzy => {
+            if (1..=6).any(|f| counts[f] == 5) {
+                50
+            } else {
+                0
+            }
+        }
+    }
+}
+
+/// Nordic Yatzy match state (present only while `mode == Yatzy`). Dice are public,
+/// so unlike Liar's Dice there's no per-viewer hiding.
+struct YatzyState {
+    /// Turn order (player ids), captured at match start. Joiners after start
+    /// spectate until the next `SetMode`.
+    order: Vec<String>,
+    /// Filled boxes per player. A category present here is used (value may be 0).
+    scores: HashMap<String, HashMap<YatzyCat, u16>>,
+    /// Index into `order` of the current roller.
+    turn: usize,
+    /// The 5 dice for the current turn (meaningful once `rolled`).
+    dice: [u8; 5],
+    held: [bool; 5],
+    /// Rolls remaining this turn (starts at 3).
+    rolls_left: u8,
+    /// Has the current player rolled at least once this turn?
+    rolled: bool,
+    winner: Option<String>,
+    over: bool,
+}
+
+impl YatzyState {
+    fn current_id(&self) -> Option<String> {
+        if self.over {
+            return None;
+        }
+        self.order.get(self.turn).cloned()
+    }
+    fn card_full(&self, id: &str) -> bool {
+        self.scores
+            .get(id)
+            .map(|m| m.len() >= YATZY_ALL.len())
+            .unwrap_or(false)
+    }
+    fn all_full(&self) -> bool {
+        !self.order.is_empty() && self.order.iter().all(|id| self.card_full(id))
+    }
+    /// (upper subtotal, bonus, grand total) for a player.
+    fn totals(&self, id: &str) -> (u16, u16, u16) {
+        let Some(m) = self.scores.get(id) else {
+            return (0, 0, 0);
+        };
+        let upper: u16 = YATZY_UPPER.iter().filter_map(|c| m.get(c)).sum();
+        let bonus = if upper >= 63 { 50 } else { 0 };
+        let lower: u16 = m
+            .iter()
+            .filter(|(c, _)| !YATZY_UPPER.contains(c))
+            .map(|(_, v)| *v)
+            .sum();
+        (upper, bonus, upper + bonus + lower)
+    }
+    fn winner_id(&self) -> Option<String> {
+        self.order
+            .iter()
+            .max_by_key(|id| self.totals(id).2)
+            .cloned()
+    }
+    /// Reset the per-turn dice state for a fresh turn.
+    fn reset_turn(&mut self) {
+        self.dice = [1; 5];
+        self.held = [false; 5];
+        self.rolls_left = 3;
+        self.rolled = false;
+    }
+    /// No one has rolled or scored yet — safe to re-deal so a new joiner is
+    /// included instead of left spectating.
+    fn pristine(&self) -> bool {
+        !self.rolled && self.scores.values().all(|m| m.is_empty())
+    }
 }
 
 pub struct Room {
@@ -298,6 +554,7 @@ pub struct Room {
     pub tx: broadcast::Sender<ServerMsg>,
     pub last_activity: Instant,
     liars: Option<LiarsState>,
+    yatzy: Option<YatzyState>,
     roll_seq: u64,
     max_dice: u8,
 }
@@ -317,6 +574,7 @@ impl Room {
             tx,
             last_activity: Instant::now(),
             liars: None,
+            yatzy: None,
             roll_seq: 0,
             max_dice,
         }
@@ -442,6 +700,9 @@ impl Room {
             ClientMsg::Bid { quantity, face } => self.liars_bid(actor_id, quantity, face),
             ClientMsg::CallLiar => self.liars_call(actor_id),
             ClientMsg::NextRound => self.liars_next_round(actor_id),
+            ClientMsg::YatzyRoll => self.yatzy_roll(actor_id),
+            ClientMsg::YatzyHold { index } => self.yatzy_hold(actor_id, index),
+            ClientMsg::YatzyScore { category } => self.yatzy_score(actor_id, category),
             ClientMsg::Leave => self.remove_player(actor_id),
         }
     }
@@ -547,7 +808,32 @@ impl Room {
                 }
             }
         }
+        // A leaver drops out of any Yatzy match in progress.
+        if let Some(g) = self.yatzy.as_mut() {
+            if let Some(pos) = g.order.iter().position(|id| id == actor_id) {
+                let was_current = pos == g.turn;
+                g.order.remove(pos);
+                g.scores.remove(actor_id);
+                if g.order.is_empty() {
+                    g.over = true;
+                    g.winner = None;
+                } else {
+                    if pos < g.turn {
+                        g.turn -= 1;
+                    }
+                    g.turn %= g.order.len();
+                    if was_current {
+                        g.reset_turn(); // the next roller starts fresh
+                    }
+                    if g.all_full() {
+                        g.over = true;
+                        g.winner = g.winner_id();
+                    }
+                }
+            }
+        }
         self.broadcast_liars();
+        self.broadcast_yatzy();
         self.broadcast_sync();
     }
 
@@ -559,21 +845,53 @@ impl Room {
         (0..n).map(|_| rng.random_range(1..=6)).collect()
     }
 
-    /// Switch game mode. Entering `liars` deals a fresh match to the current
-    /// players; anything else falls back to free mode.
+    /// Public entry to switch mode (used by the create endpoint so the host can
+    /// pick the game in the lobby); the WS path goes through `apply(SetMode)`.
+    pub fn set_game_mode(&mut self, mode: &str) {
+        self.set_mode(mode);
+    }
+
+    /// Called after a NEW player is added (join). If a Liar's/Yatzy match is set
+    /// but hasn't started (pristine), re-deal so the joiner is included rather
+    /// than left spectating — this is what makes "create a game → friends join →
+    /// play" work. A match already in progress is left alone (they spectate).
+    pub fn on_player_joined(&mut self) {
+        match self.mode {
+            Mode::Liars if self.liars.as_ref().is_some_and(|g| g.pristine()) => {
+                self.start_liars();
+                self.broadcast_liars();
+            }
+            Mode::Yatzy if self.yatzy.as_ref().is_some_and(|g| g.pristine()) => {
+                self.start_yatzy();
+                self.broadcast_yatzy();
+            }
+            _ => {}
+        }
+    }
+
+    /// Switch game mode. Entering `liars`/`yatzy` deals a fresh match to the
+    /// current players; anything else falls back to free mode.
     fn set_mode(&mut self, mode: &str) {
         match mode {
             "liars" => {
                 self.mode = Mode::Liars;
+                self.yatzy = None;
                 self.start_liars();
+            }
+            "yatzy" => {
+                self.mode = Mode::Yatzy;
+                self.liars = None;
+                self.start_yatzy();
             }
             _ => {
                 self.mode = Mode::Free;
                 self.liars = None;
+                self.yatzy = None;
             }
         }
         self.broadcast_sync(); // the `mode` field changed for everyone
-        self.broadcast_liars(); // deal the (personalized) view
+        self.broadcast_liars(); // deal the (personalized) Liar's view, if any
+        self.broadcast_yatzy(); // deal the (public) Yatzy view, if any
     }
 
     fn start_liars(&mut self) {
@@ -765,6 +1083,182 @@ impl Room {
     pub fn broadcast_liars(&self) {
         if self.mode == Mode::Liars {
             let _ = self.tx.send(ServerMsg::LiarsChanged);
+        }
+    }
+
+    // ---------- Yatzy (Nordic) ----------
+
+    /// Deal a fresh Yatzy match to the current players (blank scorecards).
+    fn start_yatzy(&mut self) {
+        let order: Vec<String> = self.players.iter().map(|p| p.id.clone()).collect();
+        let scores = order
+            .iter()
+            .map(|id| (id.clone(), HashMap::new()))
+            .collect();
+        self.yatzy = Some(YatzyState {
+            order,
+            scores,
+            turn: 0,
+            dice: [1; 5],
+            held: [false; 5],
+            rolls_left: 3,
+            rolled: false,
+            winner: None,
+            over: false,
+        });
+    }
+
+    /// Roll every non-held die (all dice on the first roll of a turn). Only the
+    /// current player, only while rolls remain.
+    fn yatzy_roll(&mut self, actor: &str) {
+        let mut rng = rand::rng();
+        {
+            let Some(g) = self.yatzy.as_mut() else {
+                return;
+            };
+            if g.over || g.rolls_left == 0 {
+                return;
+            }
+            if g.order.get(g.turn).map(|s| s.as_str()) != Some(actor) {
+                return;
+            }
+            for i in 0..5 {
+                // On the first roll nothing is held yet, so all 5 are (re)rolled.
+                if !g.rolled || !g.held[i] {
+                    g.dice[i] = rng.random_range(1..=6);
+                }
+            }
+            g.rolled = true;
+            g.rolls_left -= 1;
+        }
+        self.broadcast_yatzy();
+    }
+
+    /// Toggle a die's hold between rolls (ignored after the last roll). Only the
+    /// current player.
+    fn yatzy_hold(&mut self, actor: &str, index: u8) {
+        {
+            let Some(g) = self.yatzy.as_mut() else {
+                return;
+            };
+            if g.over || !g.rolled || g.rolls_left == 0 {
+                return;
+            }
+            if g.order.get(g.turn).map(|s| s.as_str()) != Some(actor) {
+                return;
+            }
+            if let Some(h) = g.held.get_mut(index as usize) {
+                *h = !*h;
+            }
+        }
+        self.broadcast_yatzy();
+    }
+
+    /// Assign the current dice to a still-open box (scoring its value, possibly 0),
+    /// then advance to the next player. Ends the game when every card is full.
+    fn yatzy_score(&mut self, actor: &str, cat: YatzyCat) {
+        {
+            let Some(g) = self.yatzy.as_mut() else {
+                return;
+            };
+            if g.over || !g.rolled {
+                return; // must roll at least once before scoring
+            }
+            if g.order.get(g.turn).map(|s| s.as_str()) != Some(actor) {
+                return;
+            }
+            // Must be a participant with this box still open.
+            if g.scores
+                .get(actor)
+                .map(|c| c.contains_key(&cat))
+                .unwrap_or(true)
+            {
+                return;
+            }
+            let value = yatzy_score_cat(cat, &g.dice);
+            g.scores.get_mut(actor).unwrap().insert(cat, value);
+
+            if g.all_full() {
+                g.over = true;
+                g.winner = g.winner_id();
+            } else {
+                // Next player in order with an open card (normally just the next).
+                let n = g.order.len();
+                let mut t = g.turn;
+                for _ in 0..n {
+                    t = (t + 1) % n;
+                    if !g.card_full(&g.order[t]) {
+                        break;
+                    }
+                }
+                g.turn = t;
+                g.reset_turn();
+            }
+        }
+        self.broadcast_yatzy();
+    }
+
+    /// Build the public Yatzy view (identical for every client).
+    pub fn yatzy_view(&self) -> Option<YatzyView> {
+        let g = self.yatzy.as_ref()?;
+        let cards = g
+            .order
+            .iter()
+            .map(|id| {
+                let cells = g
+                    .scores
+                    .get(id)
+                    .map(|m| {
+                        m.iter()
+                            .map(|(c, v)| YatzyCell {
+                                category: *c,
+                                value: *v,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let (upper, bonus, total) = g.totals(id);
+                YatzyCard {
+                    player_id: id.clone(),
+                    cells,
+                    upper,
+                    bonus,
+                    total,
+                }
+            })
+            .collect();
+        let (dice, held, preview) = if g.rolled {
+            let preview = YATZY_ALL
+                .iter()
+                .map(|&c| YatzyCell {
+                    category: c,
+                    value: yatzy_score_cat(c, &g.dice),
+                })
+                .collect();
+            (g.dice.to_vec(), g.held.to_vec(), preview)
+        } else {
+            (Vec::new(), vec![false; 5], Vec::new())
+        };
+        Some(YatzyView {
+            order: g.order.clone(),
+            current_player_id: g.current_id(),
+            dice,
+            held,
+            rolls_left: g.rolls_left,
+            rolled: g.rolled,
+            cards,
+            preview,
+            winner: g.winner.clone(),
+            over: g.over,
+        })
+    }
+
+    /// Broadcast the public Yatzy view to every subscriber.
+    pub fn broadcast_yatzy(&self) {
+        if self.mode == Mode::Yatzy {
+            if let Some(view) = self.yatzy_view() {
+                let _ = self.tx.send(ServerMsg::Yatzy { view });
+            }
         }
     }
 }
@@ -1176,5 +1670,257 @@ mod tests {
         assert!(!rev.bid_was_true);
         assert_eq!(rev.actual, 2);
         assert_eq!(rev.loser_id, id[0]);
+    }
+
+    // ---------- Yatzy ----------
+
+    fn start_yatzy_room(n: usize) -> (Room, Vec<String>) {
+        let mut room = room_with(n);
+        let id = ids(&room);
+        room.apply(
+            &id[0],
+            ClientMsg::SetMode {
+                mode: "yatzy".into(),
+            },
+        );
+        (room, id)
+    }
+
+    /// Force the current dice for deterministic scoring/turn tests.
+    fn set_dice(room: &mut Room, dice: [u8; 5]) {
+        let g = room.yatzy.as_mut().unwrap();
+        g.dice = dice;
+        g.rolled = true;
+    }
+
+    #[test]
+    fn yatzy_scoring_rules() {
+        use YatzyCat::*;
+        // Upper section = sum of the matching faces.
+        assert_eq!(yatzy_score_cat(Ones, &[1, 1, 3, 4, 5]), 2);
+        assert_eq!(yatzy_score_cat(Sixes, &[6, 6, 6, 2, 1]), 18);
+        // Pairs.
+        assert_eq!(yatzy_score_cat(OnePair, &[5, 5, 3, 3, 1]), 10); // highest pair
+        assert_eq!(yatzy_score_cat(OnePair, &[2, 3, 4, 5, 6]), 0);
+        assert_eq!(yatzy_score_cat(TwoPairs, &[5, 5, 3, 3, 1]), 16);
+        assert_eq!(yatzy_score_cat(TwoPairs, &[5, 5, 5, 3, 1]), 0); // only one pair face
+                                                                    // N of a kind = sum of the N.
+        assert_eq!(yatzy_score_cat(ThreeKind, &[4, 4, 4, 2, 1]), 12);
+        assert_eq!(yatzy_score_cat(FourKind, &[4, 4, 4, 4, 1]), 16);
+        assert_eq!(yatzy_score_cat(ThreeKind, &[4, 4, 2, 2, 1]), 0);
+        // Straights are fixed points.
+        assert_eq!(yatzy_score_cat(SmallStraight, &[1, 2, 3, 4, 5]), 15);
+        assert_eq!(yatzy_score_cat(SmallStraight, &[2, 3, 4, 5, 6]), 0);
+        assert_eq!(yatzy_score_cat(LargeStraight, &[2, 3, 4, 5, 6]), 20);
+        // Full house = sum of all five; five-of-a-kind is NOT a full house.
+        assert_eq!(yatzy_score_cat(FullHouse, &[3, 3, 3, 5, 5]), 19);
+        assert_eq!(yatzy_score_cat(FullHouse, &[3, 3, 3, 3, 5]), 0);
+        assert_eq!(yatzy_score_cat(FullHouse, &[4, 4, 4, 4, 4]), 0);
+        // Chance + Yatzy.
+        assert_eq!(yatzy_score_cat(Chance, &[1, 2, 3, 4, 5]), 15);
+        assert_eq!(yatzy_score_cat(Yatzy, &[2, 2, 2, 2, 2]), 50);
+        assert_eq!(yatzy_score_cat(Yatzy, &[2, 2, 2, 2, 3]), 0);
+    }
+
+    #[test]
+    fn yatzy_start_deals_blank_cards() {
+        let (room, id) = start_yatzy_room(2);
+        assert_eq!(room.mode, Mode::Yatzy);
+        let v = room.yatzy_view().unwrap();
+        assert_eq!(v.order.len(), 2);
+        assert_eq!(v.current_player_id.as_deref(), Some(id[0].as_str()));
+        assert!(!v.rolled);
+        assert_eq!(v.rolls_left, 3);
+        assert!(v.dice.is_empty()); // nothing rolled yet
+        assert!(v.cards.iter().all(|c| c.cells.is_empty() && c.total == 0));
+    }
+
+    #[test]
+    fn yatzy_roll_holds_and_rolls_left() {
+        let (mut room, id) = start_yatzy_room(1);
+        room.apply(&id[0], ClientMsg::YatzyRoll);
+        let v = room.yatzy_view().unwrap();
+        assert!(v.rolled);
+        assert_eq!(v.rolls_left, 2);
+        assert_eq!(v.dice.len(), 5);
+        // Hold all dice, remember them, roll again — held dice are unchanged.
+        for i in 0..5 {
+            room.apply(&id[0], ClientMsg::YatzyHold { index: i });
+        }
+        let before = room.yatzy_view().unwrap().dice.clone();
+        room.apply(&id[0], ClientMsg::YatzyRoll);
+        let v2 = room.yatzy_view().unwrap();
+        assert_eq!(v2.rolls_left, 1);
+        assert_eq!(v2.dice, before); // everything held → identical
+    }
+
+    #[test]
+    fn yatzy_no_roll_beyond_three() {
+        let (mut room, id) = start_yatzy_room(1);
+        for _ in 0..5 {
+            room.apply(&id[0], ClientMsg::YatzyRoll);
+        }
+        assert_eq!(room.yatzy_view().unwrap().rolls_left, 0);
+    }
+
+    #[test]
+    fn yatzy_score_fills_box_and_advances_turn() {
+        let (mut room, id) = start_yatzy_room(2);
+        room.apply(&id[0], ClientMsg::YatzyRoll);
+        set_dice(&mut room, [5, 5, 5, 2, 1]);
+        room.apply(
+            &id[0],
+            ClientMsg::YatzyScore {
+                category: YatzyCat::Fives,
+            },
+        );
+        let v = room.yatzy_view().unwrap();
+        // Box filled with 15, turn passed to player 2, dice reset.
+        let card0 = v.cards.iter().find(|c| c.player_id == id[0]).unwrap();
+        assert_eq!(card0.total, 15);
+        assert_eq!(card0.cells.len(), 1);
+        assert_eq!(v.current_player_id.as_deref(), Some(id[1].as_str()));
+        assert!(!v.rolled);
+        assert_eq!(v.rolls_left, 3);
+    }
+
+    #[test]
+    fn yatzy_cannot_reuse_a_box_or_play_out_of_turn() {
+        let (mut room, id) = start_yatzy_room(2);
+        room.apply(&id[0], ClientMsg::YatzyRoll);
+        set_dice(&mut room, [3, 3, 3, 2, 1]); // three 3s → Threes = 9
+                                              // Out of turn — ignored.
+        room.apply(
+            &id[1],
+            ClientMsg::YatzyScore {
+                category: YatzyCat::Threes,
+            },
+        );
+        assert_eq!(
+            room.yatzy_view().unwrap().current_player_id.as_deref(),
+            Some(id[0].as_str())
+        );
+        // Score threes (=9), turn → id[1], back to id[0] next turn.
+        room.apply(
+            &id[0],
+            ClientMsg::YatzyScore {
+                category: YatzyCat::Threes,
+            },
+        );
+        room.apply(&id[1], ClientMsg::YatzyRoll);
+        set_dice(&mut room, [1, 1, 1, 1, 1]);
+        room.apply(
+            &id[1],
+            ClientMsg::YatzyScore {
+                category: YatzyCat::Ones,
+            },
+        );
+        // id[0] again — the already-used Threes box is rejected.
+        room.apply(&id[0], ClientMsg::YatzyRoll);
+        set_dice(&mut room, [3, 3, 6, 6, 6]);
+        room.apply(
+            &id[0],
+            ClientMsg::YatzyScore {
+                category: YatzyCat::Threes,
+            },
+        );
+        let card0 = room
+            .yatzy_view()
+            .unwrap()
+            .cards
+            .into_iter()
+            .find(|c| c.player_id == id[0])
+            .unwrap();
+        assert_eq!(card0.cells.len(), 1); // still just the one Threes box
+        assert_eq!(card0.total, 9);
+    }
+
+    #[test]
+    fn yatzy_upper_bonus_at_63() {
+        let (mut room, id) = start_yatzy_room(1);
+        let g = room.yatzy.as_mut().unwrap();
+        // Max the upper section (n×face×… ≥ 63): all four/five of each face.
+        let card = g.scores.get_mut(&id[0]).unwrap();
+        card.insert(YatzyCat::Ones, 4);
+        card.insert(YatzyCat::Twos, 8);
+        card.insert(YatzyCat::Threes, 12);
+        card.insert(YatzyCat::Fours, 16);
+        card.insert(YatzyCat::Fives, 20);
+        card.insert(YatzyCat::Sixes, 24); // upper = 84 ≥ 63
+        let (upper, bonus, total) = room.yatzy.as_ref().unwrap().totals(&id[0]);
+        assert_eq!(upper, 84);
+        assert_eq!(bonus, 50);
+        assert_eq!(total, 134);
+    }
+
+    #[test]
+    fn yatzy_game_over_when_all_cards_full() {
+        let (mut room, id) = start_yatzy_room(1);
+        // Fill 14 boxes directly, then score the 15th through the normal path.
+        {
+            let card = room.yatzy.as_mut().unwrap().scores.get_mut(&id[0]).unwrap();
+            for &c in YATZY_ALL.iter().take(14) {
+                card.insert(c, 3);
+            }
+        }
+        room.apply(&id[0], ClientMsg::YatzyRoll);
+        set_dice(&mut room, [6, 6, 6, 6, 6]);
+        room.apply(
+            &id[0],
+            ClientMsg::YatzyScore {
+                category: YatzyCat::Yatzy,
+            },
+        );
+        let v = room.yatzy_view().unwrap();
+        assert!(v.over);
+        assert_eq!(v.winner.as_deref(), Some(id[0].as_str()));
+        assert_eq!(v.current_player_id, None);
+    }
+
+    #[test]
+    fn yatzy_join_before_start_includes_newcomer() {
+        // Host creates a Yatzy game alone; a friend joins before anyone rolls.
+        let (mut room, id) = start_yatzy_room(1);
+        assert_eq!(room.yatzy_view().unwrap().order.len(), 1);
+        let (bob, _) = room.add_player("Bob".into());
+        room.on_player_joined();
+        let v = room.yatzy_view().unwrap();
+        assert_eq!(v.order.len(), 2); // re-dealt to include Bob
+        assert!(v.order.contains(&bob));
+        assert!(v.cards.iter().all(|c| c.cells.is_empty()));
+        // But a match in progress is NOT reset by a later join.
+        room.apply(&id[0], ClientMsg::YatzyRoll);
+        set_dice(&mut room, [6, 6, 6, 6, 6]);
+        room.apply(
+            &id[0],
+            ClientMsg::YatzyScore {
+                category: YatzyCat::Sixes,
+            },
+        );
+        let (carol, _) = room.add_player("Carol".into());
+        room.on_player_joined();
+        let v2 = room.yatzy_view().unwrap();
+        assert_eq!(v2.order.len(), 2); // Carol spectates (match already started)
+        assert!(!v2.order.contains(&carol));
+    }
+
+    #[test]
+    fn yatzy_preview_reflects_current_dice() {
+        let (mut room, id) = start_yatzy_room(1);
+        room.apply(&id[0], ClientMsg::YatzyRoll);
+        set_dice(&mut room, [1, 2, 3, 4, 5]);
+        let v = room.yatzy_view().unwrap();
+        let small = v
+            .preview
+            .iter()
+            .find(|c| c.category == YatzyCat::SmallStraight)
+            .unwrap();
+        assert_eq!(small.value, 15);
+        let chance = v
+            .preview
+            .iter()
+            .find(|c| c.category == YatzyCat::Chance)
+            .unwrap();
+        assert_eq!(chance.value, 15);
     }
 }
