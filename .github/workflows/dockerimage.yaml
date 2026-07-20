@@ -25,6 +25,8 @@ jobs:
               - 'frontend/**'
               - 'Cargo.*'
               - 'Dockerfile'
+              # Rebuild when the build definition itself changes (e.g. platforms).
+              - '.github/workflows/dockerimage.yaml'
 
   build:
     needs: changes
