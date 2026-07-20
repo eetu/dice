@@ -178,23 +178,26 @@
 
 <div class="page">
   <header>
-    <a class="home" href={resolve("/")} onclick={() => socket.disconnect()}
-      ><Wordmark /></a
-    >
+    <div class="hleft">
+      <a class="home" href={resolve("/")} onclick={() => socket.disconnect()}
+        ><Wordmark /></a
+      >
+      <span
+        class="status"
+        class:connected={socket.status === "connected"}
+        title={socket.status}
+      ></span>
+    </div>
     <span class="code-chip">{code}</span>
-    <span
-      class="status"
-      class:connected={socket.status === "connected"}
-      title={socket.status}
-    ></span>
-    <div class="spacer"></div>
-    <button
-      class="gear"
-      onclick={() => (showSettings = true)}
-      aria-label={i18n.m.settings}
-      title={i18n.m.settings}><Settings size={16} /></button
-    >
-    <button class="leave" onclick={leave}>{i18n.m.leave}</button>
+    <div class="hright">
+      <button
+        class="gear"
+        onclick={() => (showSettings = true)}
+        aria-label={i18n.m.settings}
+        title={i18n.m.settings}><Settings size={16} /></button
+      >
+      <button class="leave" onclick={leave}>{i18n.m.leave}</button>
+    </div>
   </header>
 
   {#if phase === "notfound"}
@@ -408,16 +411,31 @@
     max-width: 1100px;
     margin: 0 auto;
   }
+  /* 3-column grid so the code stays dead-centre regardless of the side widths. */
   header {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 0.75rem;
     margin-bottom: 1rem;
+  }
+  .hleft {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .hright {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    justify-self: end;
   }
   .home {
     text-decoration: none;
   }
   .code-chip {
+    justify-self: center;
     font-family: var(--halo-font-heading);
     font-weight: 600;
     letter-spacing: 0.15em;
@@ -431,9 +449,6 @@
   }
   .status.connected {
     background: var(--halo-connected);
-  }
-  .spacer {
-    flex: 1;
   }
   .leave {
     background: none;
