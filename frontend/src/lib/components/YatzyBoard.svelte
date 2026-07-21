@@ -7,6 +7,7 @@
 
   import type { YatzyCat } from "$lib/api";
   import { i18n } from "$lib/i18n/i18n.svelte";
+  import { diceAudio } from "$lib/stores/audio.svelte";
   import { game } from "$lib/stores/game.svelte";
   import { yatzy } from "$lib/stores/yatzy.svelte";
 
@@ -57,6 +58,52 @@
     if (id === myId) return i18n.m.you;
     return players.find((p) => p.id === id)?.name ?? i18n.m.playerFallback;
   }
+  // Narrower columns as more players join, so the card stays readable before it
+  // needs to scroll. Header names abbreviate gracefully (First L. / truncate).
+  const nameMax = $derived(
+    (view?.order.length ?? 0) <= 2
+      ? 10
+      : (view?.order.length ?? 0) <= 3
+        ? 8
+        : 6,
+  );
+  function abbrevName(name: string, max: number): string {
+    const n = name.trim();
+    if (n.length <= max) return n;
+    const parts = n.split(/\s+/);
+    if (parts.length > 1) {
+      const initials = parts
+        .slice(1)
+        .map((p) => p[0])
+        .join("");
+      const combined = `${parts[0]} ${initials}`;
+      if (combined.length <= max) return combined;
+      if (parts[0].length <= max) return parts[0];
+    }
+    return n.slice(0, Math.max(1, max - 1)) + "…";
+  }
+
+  // A roll just happened when the roll count drops — retrigger the tumble
+  // animation and play the roll sound (everyone at the table hears it).
+  let rollAnim = $state(0);
+  let prevRollsLeft = -1;
+  $effect(() => {
+    const v = yatzy.view;
+    if (!v) {
+      prevRollsLeft = -1;
+      return;
+    }
+    if (v.rolled && prevRollsLeft !== -1 && v.rollsLeft < prevRollsLeft) {
+      rollAnim++;
+      diceAudio.roll();
+    }
+    prevRollsLeft = v.rollsLeft;
+  });
+
+  function doRoll() {
+    diceAudio.unlock(); // prime audio on the roller's gesture
+    onRoll();
+  }
 
   const isMyTurn = $derived(!!view && !!myId && view.currentPlayerId === myId);
   const iPlay = $derived(!!view && !!myId && view.order.includes(myId));
@@ -84,6 +131,10 @@
       }
     );
   }
+  // Any upper box still open for this player (so the bonus is still reachable)?
+  function upperOpen(pid: string): boolean {
+    return UPPER.some((c) => filledValue(pid, c) === undefined);
+  }
 
   // Dice to render: the live dice, or 5 blanks (0) before the first roll.
   const diceFaces = $derived(view?.dice.length ? view.dice : [0, 0, 0, 0, 0]);
@@ -106,6 +157,13 @@
       <span class="pip" class:on={f >= 1 && PIPS[f].includes(c)}></span>
     {/each}
   </span>
+{/snippet}
+
+<!-- Re-keys on each roll so the tumble animation replays; held dice don't move. -->
+{#snippet animDie(f: number, held: boolean)}
+  {#key rollAnim}
+    <span class="dieanim" class:tumble={!held}>{@render face(f)}</span>
+  {/key}
 {/snippet}
 
 {#snippet cell(pid: string, cat: YatzyCat)}
@@ -140,7 +198,9 @@
           <tr>
             <th class="cat"></th>
             {#each view.order as pid (pid)}
-              <th class:turn={pid === view.currentPlayerId}>{nameOf(pid)}</th>
+              <th class:turn={pid === view.currentPlayerId} title={nameOf(pid)}
+                >{abbrevName(nameOf(pid), nameMax)}</th
+              >
             {/each}
           </tr>
         </thead>
@@ -158,11 +218,20 @@
             {/each}
           </tr>
           <tr class="sub">
-            <th class="cat">{i18n.m.yatzyBonus}</th>
+            <th class="cat hintcat" title={i18n.m.yatzyBonusHint}
+              >{i18n.m.yatzyBonus}</th
+            >
             {#each view.order as pid (pid)}
-              <td class="val" class:zero={cardTotals(pid).bonus === 0}
-                >{cardTotals(pid).bonus}</td
-              >
+              {@const t = cardTotals(pid)}
+              {#if t.bonus > 0}
+                <td class="val sum">{t.bonus}</td>
+              {:else if upperOpen(pid)}
+                <td class="val togo" title={i18n.m.yatzyToGo(63 - t.upper)}
+                  >{63 - t.upper}</td
+                >
+              {:else}
+                <td class="val zero">0</td>
+              {/if}
             {/each}
           </tr>
           {#each LOWER as cat (cat)}
@@ -191,12 +260,14 @@
               class:held={view.held[i]}
               aria-pressed={view.held[i]}
               aria-label={i18n.m.yatzyHoldHint}
-              onclick={() => onHold(i)}>{@render face(f)}</button
+              onclick={() => onHold(i)}
+              >{@render animDie(f, view.held[i])}</button
             >
           {:else}
             <span
               class="dietile static"
-              class:held={view.rolled && view.held[i]}>{@render face(f)}</span
+              class:held={view.rolled && view.held[i]}
+              >{@render animDie(f, view.rolled && view.held[i])}</span
             >
           {/if}
         {/each}
@@ -208,7 +279,7 @@
         <button
           class="roll"
           disabled={!isMyTurn || view.rollsLeft === 0}
-          onclick={onRoll}
+          onclick={doRoll}
         >
           {i18n.m.yatzyRoll(view.rollsLeft)}
         </button>
@@ -247,6 +318,12 @@
     padding: 0.3rem 0.5rem;
     text-align: center;
     border-bottom: 1px solid var(--halo-border);
+  }
+  /* Keep player columns readable; the card scrolls horizontally once they don't
+     all fit rather than squeezing to nothing. */
+  .card thead th:not(.cat),
+  .card tbody td {
+    min-width: 2.9rem;
   }
   /* Category column sticks to the left as columns scroll horizontally. */
   th.cat {
@@ -288,6 +365,18 @@
   }
   .val.sum {
     font-weight: 600;
+  }
+  /* Points still needed for the upper bonus — a hint, not a score. */
+  .val.togo {
+    color: var(--halo-text-muted);
+    font-style: italic;
+    font-size: 0.78rem;
+  }
+  /* The bonus label carries the rule as a tooltip. */
+  .hintcat {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    cursor: help;
   }
   tr.sub .cat,
   tr.sub .val {
@@ -341,6 +430,28 @@
     gap: 0.6rem;
     justify-content: center;
     flex-wrap: wrap;
+    perspective: 500px; /* gives the roll tumble a bit of depth */
+  }
+  .dieanim {
+    display: inline-flex;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .dieanim.tumble {
+      animation: tumble 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+  @keyframes tumble {
+    0% {
+      transform: rotateX(-75deg) scale(0.85);
+      opacity: 0.5;
+    }
+    55% {
+      transform: rotateX(15deg) scale(1.06);
+      opacity: 1;
+    }
+    100% {
+      transform: rotateX(0) scale(1);
+    }
   }
   /* The die itself is the tap target — no wrapping button chrome. */
   .dietile {

@@ -145,6 +145,8 @@ export const fi: Catalog = {
   yatzyTapToScore: "Napauta ruutua pisteyttääksesi tähän",
   yatzyUpper: "Yläosa",
   yatzyBonus: "Bonus",
+  yatzyBonusHint: "Yläbonus: +50 kun ykköset–kutoset yhteensä 63 tai enemmän",
+  yatzyToGo: (n: number) => `${n} vielä`,
   yatzyTotal: "Yhteensä",
   yatzyWaitingRoll: (name: string) => `Odotetaan, että ${name} heittää…`,
   yatzyYourTurn: "Sinun vuorosi — heitä",

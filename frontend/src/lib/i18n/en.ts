@@ -142,6 +142,8 @@ export const en = {
   yatzyTapToScore: "Tap a box to score it here",
   yatzyUpper: "Upper",
   yatzyBonus: "Bonus",
+  yatzyBonusHint: "Upper bonus: +50 when ones–sixes total 63 or more",
+  yatzyToGo: (n: number) => `${n} to go`,
   yatzyTotal: "Total",
   yatzyWaitingRoll: (name: string) => `Waiting for ${name} to roll…`,
   yatzyYourTurn: "Your turn — roll",

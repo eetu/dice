@@ -228,6 +228,37 @@ class DiceAudio {
     }
   }
 
+  /** A quick roll: several dice tumbling then settling — for the flat-tile games
+   *  (Liar's Dice / Yatzy) that have no physics engine. A dense scatter of plastic
+   *  clicks tapering off, capped by a couple of low settle knocks. */
+  roll(n = 5): void {
+    if (this.muted) return;
+    const ctx = this.#ensure();
+    if (!ctx || !this.#noise) return;
+    const t0 = ctx.currentTime;
+    const grains = Math.min(16, 7 + n);
+    for (let i = 0; i < grains; i++) {
+      const frac = i / grains; // dense at first, thinning as the dice settle
+      const t = t0 + frac * 0.34 + Math.random() * 0.04;
+      this.#rattleGrain(ctx, t, 0.75 * (1 - frac) + 0.25);
+    }
+    // A couple of firm low knocks as the dice come to rest.
+    for (let i = 0; i < 2; i++) {
+      const t = t0 + 0.3 + i * 0.055 + Math.random() * 0.02;
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(150 + Math.random() * 40, t);
+      osc.frequency.exponentialRampToValueAtTime(80, t + 0.1);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.5, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.16);
+    }
+  }
+
   /** Start the "dice rattling in a plastic cup" loop, held while the phone is
    *  shaken. Rather than a continuous wash, a look-ahead scheduler fires many
    *  discrete plastic clicks at rapid, irregular intervals (= several dice

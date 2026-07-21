@@ -5,6 +5,7 @@
   import Trophy from "@lucide/svelte/icons/trophy";
 
   import { i18n } from "$lib/i18n/i18n.svelte";
+  import { diceAudio } from "$lib/stores/audio.svelte";
   import { game } from "$lib/stores/game.svelte";
   import { liars } from "$lib/stores/liars.svelte";
 
@@ -40,6 +41,23 @@
   const opponents = $derived(
     (view?.players ?? []).filter((p) => p.playerId !== myId),
   );
+
+  // A fresh hand was dealt (match start or a new round) whenever we (re-)enter the
+  // bidding phase — tumble your cup and play the roll sound.
+  let dealAnim = $state(0);
+  let prevPhase: string | null = null;
+  $effect(() => {
+    const v = liars.view;
+    if (!v) {
+      prevPhase = null;
+      return;
+    }
+    if (v.phase === "bidding" && prevPhase !== "bidding") {
+      dealAnim++;
+      diceAudio.roll();
+    }
+    prevPhase = v.phase;
+  });
 
   // Bid draft — reset to the smallest legal raise whenever the state changes.
   let draftQty = $state(1);
@@ -183,7 +201,10 @@
     <div class="you">
       <div class="your-dice" class:my-turn={isMyTurn}>
         {#if view.yourDice.length}
-          {#each view.yourDice as d, i (i)}{@render face(d)}{/each}
+          <!-- Re-keys on each deal so the cup tumbles when a new hand is dealt. -->
+          {#each view.yourDice as d, i (i)}{#key dealAnim}<span
+                class="dieanim tumble">{@render face(d)}</span
+              >{/key}{/each}
         {:else}
           <span class="knocked">{i18n.m.spectating}</span>
         {/if}
@@ -393,6 +414,28 @@
     background: var(--halo-bg-light);
     border-radius: var(--halo-radius);
     border: 1px solid transparent;
+    perspective: 500px; /* depth for the deal tumble */
+  }
+  .dieanim {
+    display: inline-flex;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .dieanim.tumble {
+      animation: tumble 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+  @keyframes tumble {
+    0% {
+      transform: rotateX(-75deg) scale(0.85);
+      opacity: 0.5;
+    }
+    55% {
+      transform: rotateX(15deg) scale(1.06);
+      opacity: 1;
+    }
+    100% {
+      transform: rotateX(0) scale(1);
+    }
   }
   .your-dice.my-turn {
     border-color: var(--halo-accent);
