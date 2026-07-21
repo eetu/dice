@@ -11,10 +11,18 @@
   import "@fontsource/space-grotesk/600.css";
   import "$lib/styles/halo.css";
 
+  import { updated } from "$app/state";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { theme, watchSystemTheme } from "$lib/stores/theme.svelte";
 
   let { children } = $props();
+
+  // A new build was deployed (SvelteKit's version poll flipped `updated`). Since a
+  // deploy restarts the backend and wipes the in-memory games, there's no live
+  // game to lose — hard-reload to pick up the new SPA (and matching protocol).
+  $effect(() => {
+    if (updated.current) location.reload();
+  });
 
   // Reflect the resolved theme onto <html data-theme>, which the halo tokens
   // key off. Keep it live for OS changes while in `auto`.

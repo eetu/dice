@@ -17,6 +17,15 @@ const config = {
       precompress: false,
       strict: true,
     }),
+    // Detect a new deploy: SvelteKit polls `_app/version.json` (its `version.name`
+    // defaults to a unique build timestamp, so it changes on every build — incl.
+    // `:main` rebuilds that don't bump the Cargo semver) and flips `updated`. The
+    // root layout reloads on it. Frontend + backend ship in one image, so a new
+    // build == a redeploy, which also wipes the in-memory games — so a reload is
+    // safe (there's no live game to lose).
+    version: {
+      pollInterval: 60_000,
+    },
   },
 };
 
