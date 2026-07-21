@@ -19,13 +19,20 @@
   $effect(() => {
     const d = dialog;
     if (!d) return;
-    if (open && !d.open) d.showModal();
-    else if (!open && d.open) d.close();
+    if (open && !d.open) {
+      d.showModal();
+      // showModal() auto-focuses the first focusable child (the × button), which
+      // then shows the accent focus ring as if "selected". Move focus to the
+      // dialog itself so nothing is ring-highlighted on open; Tab still reaches
+      // the controls with a proper keyboard focus ring.
+      d.focus();
+    } else if (!open && d.open) d.close();
   });
 </script>
 
 <dialog
   bind:this={dialog}
+  tabindex="-1"
   aria-label={label}
   onclose={onClose}
   onclick={(e) => {
@@ -52,6 +59,12 @@
     padding: 0;
     width: min(24rem, calc(100vw - 2rem));
     box-shadow: var(--halo-shadow);
+  }
+  /* The dialog takes initial focus (see the mount effect) — it's a container, not
+     a control, so no focus ring on it. */
+  dialog:focus,
+  dialog:focus-visible {
+    outline: none;
   }
   dialog::backdrop {
     background: rgba(0, 0, 0, 0.5);
