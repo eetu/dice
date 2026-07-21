@@ -133,6 +133,9 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overscroll-behavior: none;
+  /* Disable iOS double-tap-to-zoom (fires on quick repeated taps, e.g. rolling
+     dice) while keeping pinch-zoom + scrolling. */
+  touch-action: manipulation;
 }
 
 h1,
@@ -146,6 +149,9 @@ h3 {
 button {
   font-family: inherit;
   cursor: pointer;
+  /* No double-tap zoom on tap targets (dice, roll, score…) — the reported iOS
+     issue when tapping dice quickly. Keeps pinch-zoom elsewhere. */
+  touch-action: manipulation;
 }
 
 :focus-visible {
