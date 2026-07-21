@@ -146,6 +146,7 @@ export const en = {
   yatzyBonusHint: "Upper bonus: +50 when ones–sixes total 63 or more",
   yatzyToGo: (n: number) => `${n} to go`,
   yatzyTotal: "Total",
+  yatzySwipeHint: "Swipe or tap a name to switch player",
   yatzyWaitingRoll: (name: string) => `Waiting for ${name} to roll…`,
   yatzyYourTurn: "Your turn — roll",
   yatzyScratchHint: "No roll left — you must fill a box (0 is allowed)",

@@ -141,6 +141,36 @@
     [...(view?.cards ?? [])].sort((a, b) => b.total - a.total),
   );
 
+  // Large groups: page ONE player's card at a time (swipe / tap tabs) instead of
+  // a wide matrix that scrolls sideways. 2–3 players keep the side-by-side matrix.
+  const paged = $derived((view?.order.length ?? 0) > 3);
+  let focus = $state(0);
+  let prevCurrent: string | null = null;
+  $effect(() => {
+    const v = yatzy.view;
+    if (!v) return;
+    if (v.currentPlayerId !== prevCurrent) {
+      const ci = v.order.findIndex((id) => id === v.currentPlayerId);
+      if (ci >= 0) focus = ci; // snap to the active player when the turn changes
+      prevCurrent = v.currentPlayerId;
+    }
+  });
+  const focusIdx = $derived(
+    Math.min(focus, Math.max(0, (view?.order.length ?? 1) - 1)),
+  );
+  const focusId = $derived(view?.order[focusIdx] ?? "");
+
+  let swipeX = 0;
+  function swipeStart(e: PointerEvent) {
+    swipeX = e.clientX;
+  }
+  function swipeEnd(e: PointerEvent) {
+    const n = view?.order.length ?? 0;
+    const dx = e.clientX - swipeX;
+    if (n < 2 || Math.abs(dx) < 40) return;
+    focus = (focusIdx + (dx < 0 ? 1 : -1) + n) % n;
+  }
+
   // Dice to render: the live dice, or 5 blanks (0) before the first roll.
   const diceFaces = $derived(view?.dice.length ? view.dice : [0, 0, 0, 0, 0]);
 
@@ -189,6 +219,39 @@
   {/if}
 {/snippet}
 
+<!-- Paged (single-player) value for the focused card. -->
+{#snippet pval(pid: string, cat: YatzyCat)}
+  {@const filled = filledValue(pid, cat)}
+  {#if filled !== undefined}
+    <span class="pv" class:zero={filled === 0}>{filled}</span>
+  {:else if pid === view?.currentPlayerId && canScore}
+    <button class="pscore" onclick={() => onScore(cat)}>{previewOf(cat)}</button
+    >
+  {:else}
+    <span class="pv dash">–</span>
+  {/if}
+{/snippet}
+
+{#snippet prow(cat: YatzyCat)}
+  <div class="prow">
+    <span class="plabel">{i18n.m.yatzyCats[cat]}</span>
+    {@render pval(focusId, cat)}
+  </div>
+{/snippet}
+
+{#snippet pbonus(pid: string)}
+  {@const t = cardTotals(pid)}
+  {#if t.bonus > 0}
+    <span class="pv sum">{t.bonus}</span>
+  {:else if upperOpen(pid)}
+    <span class="pv togo" title={i18n.m.yatzyToGo(63 - t.upper)}
+      >{63 - t.upper}</span
+    >
+  {:else}
+    <span class="pv zero">0</span>
+  {/if}
+{/snippet}
+
 <div class="yatzy">
   {#if !view}
     <p class="muted">{i18n.m.dealing}</p>
@@ -209,6 +272,45 @@
         </ol>
         <button class="primary" onclick={onNewMatch}>{i18n.m.playAgain}</button>
       </div>
+    </div>
+  {:else if paged}
+    <!-- Large groups: one player's card at a time (tap a tab or swipe). -->
+    <div class="paged">
+      <div class="ptabs">
+        {#each view.order as pid, i (pid)}
+          <button
+            class="ptab"
+            class:focused={i === focusIdx}
+            class:turn={pid === view.currentPlayerId}
+            onclick={() => (focus = i)}
+          >
+            <span class="ptn">{abbrevName(nameOf(pid), 8)}</span>
+            <span class="pts">{cardTotals(pid).total}</span>
+          </button>
+        {/each}
+      </div>
+      <!-- Swipe is a progressive enhancement; the tabs above are the accessible
+        (and keyboard) way to switch players. -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="pcard" onpointerdown={swipeStart} onpointerup={swipeEnd}>
+        {#each UPPER as cat (cat)}{@render prow(cat)}{/each}
+        <div class="prow sub">
+          <span class="plabel">{i18n.m.yatzyUpper}</span>
+          <span class="pv sum">{cardTotals(focusId).upper}</span>
+        </div>
+        <div class="prow sub">
+          <span class="plabel hintcat" title={i18n.m.yatzyBonusHint}
+            >{i18n.m.yatzyBonus}</span
+          >
+          {@render pbonus(focusId)}
+        </div>
+        {#each LOWER as cat (cat)}{@render prow(cat)}{/each}
+        <div class="prow grand">
+          <span class="plabel">{i18n.m.yatzyTotal}</span>
+          <span class="pv sum">{cardTotals(focusId).total}</span>
+        </div>
+      </div>
+      <p class="swipehint">{i18n.m.yatzySwipeHint}</p>
     </div>
   {:else}
     <!-- Scorecard: categories × players -->
@@ -320,6 +422,122 @@
     color: var(--halo-text-muted);
     text-align: center;
     margin: auto;
+  }
+
+  /* Paged single-player card (large groups) — never scrolls horizontally. */
+  .paged {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .ptabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .ptab {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    padding: 0.3rem 0.55rem;
+    border-radius: var(--halo-radius);
+    background: var(--halo-bg-light);
+    border: 1px solid transparent;
+    color: var(--halo-text-muted);
+    max-width: 8rem;
+  }
+  .ptab.turn {
+    color: var(--halo-accent);
+  }
+  .ptab.focused {
+    border-color: var(--halo-border);
+    background: var(--halo-bg-main);
+    color: var(--halo-text-main);
+    box-shadow: var(--halo-shadow);
+  }
+  .ptab .ptn {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ptab .pts {
+    font-family: var(--halo-font-heading);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .pcard {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    touch-action: pan-y; /* let horizontal drags be swipes, keep vertical scroll */
+  }
+  .prow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--halo-border);
+  }
+  .plabel {
+    color: var(--halo-text-muted);
+  }
+  .pv {
+    font-variant-numeric: tabular-nums;
+    color: var(--halo-text-main);
+    min-width: 2.5rem;
+    text-align: right;
+  }
+  .pv.zero,
+  .pv.dash {
+    color: var(--halo-text-muted);
+  }
+  .pv.sum {
+    font-weight: 600;
+  }
+  .pv.togo {
+    color: var(--halo-text-muted);
+    font-style: italic;
+    font-size: 0.85rem;
+  }
+  .prow.sub .plabel,
+  .prow.sub .pv {
+    color: var(--halo-text-muted);
+  }
+  .prow.grand {
+    border-bottom: none;
+  }
+  .prow.grand .plabel,
+  .prow.grand .pv {
+    font-family: var(--halo-font-heading);
+    font-weight: 700;
+    color: var(--halo-text-main);
+    font-size: 1.05rem;
+  }
+  .pscore {
+    min-width: 2.6rem;
+    min-height: 34px;
+    border: 1px dashed var(--halo-accent);
+    border-radius: var(--halo-radius-pill);
+    background: var(--halo-accent-soft);
+    color: var(--halo-accent);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .pscore:hover {
+    background: var(--halo-accent);
+    color: var(--halo-on-accent);
+  }
+  .swipehint {
+    margin: 0;
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--halo-text-muted);
+    flex-shrink: 0;
   }
 
   /* Scorecard */

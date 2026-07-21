@@ -149,6 +149,7 @@ export const fi: Catalog = {
   yatzyBonusHint: "Yläbonus: +50 kun ykköset–kutoset yhteensä 63 tai enemmän",
   yatzyToGo: (n: number) => `${n} vielä`,
   yatzyTotal: "Yhteensä",
+  yatzySwipeHint: "Pyyhkäise tai napauta nimeä vaihtaaksesi pelaajaa",
   yatzyWaitingRoll: (name: string) => `Odotetaan, että ${name} heittää…`,
   yatzyYourTurn: "Sinun vuorosi — heitä",
   yatzyScratchHint: "Ei heittoja jäljellä — täytä ruutu (0 sallittu)",
