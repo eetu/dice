@@ -6,6 +6,7 @@
   import Trophy from "@lucide/svelte/icons/trophy";
 
   import type { YatzyCat } from "$lib/api";
+  import Fireworks from "$lib/components/Fireworks.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
   import { game } from "$lib/stores/game.svelte";
@@ -135,6 +136,10 @@
   function upperOpen(pid: string): boolean {
     return UPPER.some((c) => filledValue(pid, c) === undefined);
   }
+  // Final standings, highest total first (for the win screen).
+  const ranked = $derived(
+    [...(view?.cards ?? [])].sort((a, b) => b.total - a.total),
+  );
 
   // Dice to render: the live dice, or 5 blanks (0) before the first roll.
   const diceFaces = $derived(view?.dice.length ? view.dice : [0, 0, 0, 0, 0]);
@@ -189,9 +194,21 @@
     <p class="muted">{i18n.m.dealing}</p>
   {:else if view.over}
     <div class="over">
-      <p class="crown"><Trophy size={44} /></p>
-      <h2>{i18n.m.yatzyWin(nameOf(view.winner), view.winner === myId)}</h2>
-      <button class="primary" onclick={onNewMatch}>{i18n.m.playAgain}</button>
+      <Fireworks />
+      <div class="over-content">
+        <p class="crown"><Trophy size={44} /></p>
+        <h2>{i18n.m.yatzyWin(nameOf(view.winner), view.winner === myId)}</h2>
+        <ol class="results">
+          {#each ranked as r, i (r.playerId)}
+            <li class:me={r.playerId === myId} class:top={i === 0}>
+              <span class="rk">{i + 1}</span>
+              <span class="rn">{nameOf(r.playerId)}</span>
+              <span class="rs">{r.total}</span>
+            </li>
+          {/each}
+        </ol>
+        <button class="primary" onclick={onNewMatch}>{i18n.m.playAgain}</button>
+      </div>
     </div>
   {:else}
     <!-- Scorecard: categories × players -->
@@ -514,14 +531,24 @@
     cursor: default;
   }
 
-  /* Winner */
+  /* Winner — fills the board so the fireworks fill the background. */
   .over {
-    margin: auto;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
     text-align: center;
+  }
+  .over-content {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     align-items: center;
+    padding: 1rem;
   }
   .crown {
     margin: 0;
@@ -530,6 +557,50 @@
   }
   .over h2 {
     margin: 0;
+  }
+  /* Final standings. */
+  .results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: min(20rem, 78vw);
+  }
+  .results li {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.7rem;
+    border-radius: var(--halo-radius);
+    background: var(--halo-bg-light);
+  }
+  .results li.top {
+    background: var(--halo-accent-soft);
+    box-shadow: inset 3px 0 0 var(--halo-accent);
+  }
+  .results .rk {
+    width: 1.2rem;
+    text-align: right;
+    color: var(--halo-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .results .rn {
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .results li.me .rn {
+    color: var(--halo-accent);
+    font-weight: 600;
+  }
+  .results .rs {
+    font-family: var(--halo-font-heading);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
   }
   .over .primary {
     background: var(--halo-accent);

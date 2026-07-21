@@ -4,6 +4,7 @@
   // names from the game snapshot; reports intent via callbacks.
   import Trophy from "@lucide/svelte/icons/trophy";
 
+  import Fireworks from "$lib/components/Fireworks.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
   import { game } from "$lib/stores/game.svelte";
@@ -121,9 +122,12 @@
     <p class="muted">{i18n.m.dealing}</p>
   {:else if view.phase === "over"}
     <div class="over">
-      <p class="crown"><Trophy size={44} /></p>
-      <h2>{i18n.m.liarsWin(nameOf(view.winner), view.winner === myId)}</h2>
-      <button class="primary" onclick={onNewMatch}>{i18n.m.playAgain}</button>
+      <Fireworks />
+      <div class="over-content">
+        <p class="crown"><Trophy size={44} /></p>
+        <h2>{i18n.m.liarsWin(nameOf(view.winner), view.winner === myId)}</h2>
+        <button class="primary" onclick={onNewMatch}>{i18n.m.playAgain}</button>
+      </div>
     </div>
   {:else}
     <!-- Opponents: face-down cups + counts -->
@@ -557,14 +561,24 @@
     margin: 0;
   }
 
-  /* Winner */
+  /* Winner — fills the board so the fireworks fill the background. */
   .over {
-    margin: auto;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
     text-align: center;
+  }
+  .over-content {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     align-items: center;
+    padding: 1rem;
   }
   .crown {
     margin: 0;
