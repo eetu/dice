@@ -201,9 +201,11 @@
     <div class="you">
       <div class="your-dice" class:my-turn={isMyTurn}>
         {#if view.yourDice.length}
-          <!-- Re-keys on each deal so the cup tumbles when a new hand is dealt. -->
+          <!-- Re-keys on each deal so the cup tumbles when a new hand is dealt;
+               `--i` staggers them so they cascade in. -->
           {#each view.yourDice as d, i (i)}{#key dealAnim}<span
-                class="dieanim tumble">{@render face(d)}</span
+                class="dieanim tumble"
+                style="--i:{i}">{@render face(d)}</span
               >{/key}{/each}
         {:else}
           <span class="knocked">{i18n.m.spectating}</span>
@@ -414,27 +416,35 @@
     background: var(--halo-bg-light);
     border-radius: var(--halo-radius);
     border: 1px solid transparent;
-    perspective: 500px; /* depth for the deal tumble */
+    perspective: 700px; /* depth for the deal tumble */
   }
   .dieanim {
     display: inline-flex;
   }
   @media (prefers-reduced-motion: no-preference) {
     .dieanim.tumble {
-      animation: tumble 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+      animation: tumble 0.6s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
+      animation-delay: calc(var(--i, 0) * 70ms); /* dice cascade in */
     }
   }
+  /* A full multi-axis flip that drops in and bounces to rest. */
   @keyframes tumble {
     0% {
-      transform: rotateX(-75deg) scale(0.85);
-      opacity: 0.5;
+      transform: translateY(-22px) rotateX(-220deg) rotateZ(-40deg) scale(0.6);
+      opacity: 0;
     }
-    55% {
-      transform: rotateX(15deg) scale(1.06);
+    45% {
+      transform: translateY(0) rotateX(30deg) rotateZ(16deg) scale(1.18);
       opacity: 1;
     }
+    70% {
+      transform: rotateX(-12deg) rotateZ(-6deg) scale(0.94);
+    }
+    88% {
+      transform: rotateX(4deg) scale(1.03);
+    }
     100% {
-      transform: rotateX(0) scale(1);
+      transform: none;
     }
   }
   .your-dice.my-turn {

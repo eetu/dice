@@ -159,10 +159,13 @@
   </span>
 {/snippet}
 
-<!-- Re-keys on each roll so the tumble animation replays; held dice don't move. -->
-{#snippet animDie(f: number, held: boolean)}
+<!-- Re-keys on each roll so the tumble animation replays; held dice don't move.
+     `--i` staggers the dice so they cascade in rather than flipping in unison. -->
+{#snippet animDie(f: number, held: boolean, i: number)}
   {#key rollAnim}
-    <span class="dieanim" class:tumble={!held}>{@render face(f)}</span>
+    <span class="dieanim" class:tumble={!held} style="--i:{i}"
+      >{@render face(f)}</span
+    >
   {/key}
 {/snippet}
 
@@ -261,13 +264,13 @@
               aria-pressed={view.held[i]}
               aria-label={i18n.m.yatzyHoldHint}
               onclick={() => onHold(i)}
-              >{@render animDie(f, view.held[i])}</button
+              >{@render animDie(f, view.held[i], i)}</button
             >
           {:else}
             <span
               class="dietile static"
               class:held={view.rolled && view.held[i]}
-              >{@render animDie(f, view.rolled && view.held[i])}</span
+              >{@render animDie(f, view.rolled && view.held[i], i)}</span
             >
           {/if}
         {/each}
@@ -430,27 +433,35 @@
     gap: 0.6rem;
     justify-content: center;
     flex-wrap: wrap;
-    perspective: 500px; /* gives the roll tumble a bit of depth */
+    perspective: 700px; /* gives the roll tumble real depth */
   }
   .dieanim {
     display: inline-flex;
   }
   @media (prefers-reduced-motion: no-preference) {
     .dieanim.tumble {
-      animation: tumble 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+      animation: tumble 0.6s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
+      animation-delay: calc(var(--i, 0) * 70ms); /* dice cascade in */
     }
   }
+  /* A full multi-axis flip that drops in and bounces to rest. */
   @keyframes tumble {
     0% {
-      transform: rotateX(-75deg) scale(0.85);
-      opacity: 0.5;
+      transform: translateY(-22px) rotateX(-220deg) rotateZ(-40deg) scale(0.6);
+      opacity: 0;
     }
-    55% {
-      transform: rotateX(15deg) scale(1.06);
+    45% {
+      transform: translateY(0) rotateX(30deg) rotateZ(16deg) scale(1.18);
       opacity: 1;
     }
+    70% {
+      transform: rotateX(-12deg) rotateZ(-6deg) scale(0.94);
+    }
+    88% {
+      transform: rotateX(4deg) scale(1.03);
+    }
     100% {
-      transform: rotateX(0) scale(1);
+      transform: none;
     }
   }
   /* The die itself is the tap target — no wrapping button chrome. */
