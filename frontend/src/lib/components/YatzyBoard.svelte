@@ -4,6 +4,7 @@
   // intent via callbacks. Dice are the tap targets themselves (no button chrome):
   // tap a die to hold it between rolls; tap a scorecard box to score there.
   import Trophy from "@lucide/svelte/icons/trophy";
+  import { fade } from "svelte/transition";
 
   import type { YatzyCat } from "$lib/api";
   import Fireworks from "$lib/components/Fireworks.svelte";
@@ -169,7 +170,22 @@
     const dx = e.clientX - swipeX;
     if (n < 2 || Math.abs(dx) < 40) return;
     focus = (focusIdx + (dx < 0 ? 1 : -1) + n) % n;
+    hintSeen = true;
   }
+  function selectTab(i: number) {
+    focus = i;
+    hintSeen = true;
+  }
+
+  // The swipe/tap hint is a one-time nudge. It floats over the card (absolutely
+  // positioned, so it reserves no layout height — the board keeps the full space)
+  // and clears once the player first switches cards, or after a few seconds.
+  let hintSeen = $state(false);
+  $effect(() => {
+    if (!paged || hintSeen) return;
+    const t = setTimeout(() => (hintSeen = true), 4500);
+    return () => clearTimeout(t);
+  });
 
   // Dice to render: the live dice, or 5 blanks (0) before the first roll.
   const diceFaces = $derived(view?.dice.length ? view.dice : [0, 0, 0, 0, 0]);
@@ -285,7 +301,7 @@
               class="ptab"
               class:focused={i === focusIdx}
               class:turn={pid === view.currentPlayerId}
-              onclick={() => (focus = i)}
+              onclick={() => selectTab(i)}
             >
               <span class="ptn">{abbrevName(nameOf(pid), 8)}</span>
               <span class="pts">{cardTotals(pid).total}</span>
@@ -313,7 +329,11 @@
             <span class="pv sum">{cardTotals(focusId).total}</span>
           </div>
         </div>
-        <p class="swipehint">{i18n.m.yatzySwipeHint}</p>
+        {#if !hintSeen}
+          <p class="swipehint" transition:fade={{ duration: 200 }}>
+            {i18n.m.yatzySwipeHint}
+          </p>
+        {/if}
       </div>
     {:else}
       <!-- Scorecard: categories × players (small groups). -->
@@ -432,6 +452,7 @@
 
   /* Paged single-player card (large groups) — never scrolls horizontally. */
   .paged {
+    position: relative;
     flex: 1;
     min-height: 0;
     display: flex;
@@ -538,12 +559,24 @@
     background: var(--halo-accent);
     color: var(--halo-on-accent);
   }
+  /* A transient nudge floating over the card — reserves no layout height, so the
+     board keeps the full space; fades out on first switch / after a few seconds. */
   .swipehint {
+    position: absolute;
+    left: 50%;
+    bottom: 0.35rem;
+    transform: translateX(-50%);
     margin: 0;
+    padding: 0.3rem 0.7rem;
+    max-width: 92%;
+    border-radius: var(--halo-radius-pill);
+    background: var(--halo-bg-main);
+    box-shadow: var(--halo-shadow);
     text-align: center;
     font-size: 0.72rem;
     color: var(--halo-text-muted);
-    flex-shrink: 0;
+    white-space: nowrap;
+    pointer-events: none;
   }
 
   /* Scorecard */
