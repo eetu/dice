@@ -72,13 +72,15 @@ pub struct RollRecord {
 
 /// Which game the room is playing. `free` = the plain roller (default); `liars` =
 /// Liar's Dice (hidden per-player dice, bidding + calling); `yatzy` = Nordic
-/// Yatzy (public dice, up to 3 rolls/turn with holds, a 15-box scorecard).
+/// Yatzy (public dice, up to 3 rolls/turn with holds, a 15-box scorecard);
+/// `farkle` = Farkle (push-your-luck, set aside scoring dice or bust).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Mode {
     Free,
     Liars,
     Yatzy,
+    Farkle,
 }
 
 /// A Liar's Dice bid: "at least `quantity` dice showing `face`" across ALL cups.
@@ -238,6 +240,37 @@ pub struct YatzyView {
     pub over: bool,
 }
 
+/// A player's banked Farkle total.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FarkleScore {
+    pub player_id: String,
+    pub score: u32,
+}
+
+/// The public Farkle view — same for every client (dice are public).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FarkleView {
+    pub order: Vec<String>,
+    pub current_player_id: Option<String>,
+    pub scores: Vec<FarkleScore>,
+    pub target: u32,
+    /// The dice just rolled, waiting to be set aside ([] if none in play).
+    pub dice: Vec<u8>,
+    /// Points set aside this turn but not yet banked.
+    pub turn_score: u32,
+    /// Dice available to roll next (6 = a fresh hand / hot dice).
+    pub remaining: u8,
+    /// A roll landed and the player must set aside scoring dice before rolling
+    /// again or banking.
+    pub must_pick: bool,
+    /// The last roll scored nothing — the turn is bust (tap to pass).
+    pub busted: bool,
+    pub winner: Option<String>,
+    pub over: bool,
+}
+
 /// Full room state — sent on connect and after any structural change.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -278,6 +311,8 @@ pub enum ServerMsg {
     Liars { view: LiarsView },
     /// The public Yatzy view — broadcast to everyone (nothing hidden).
     Yatzy { view: YatzyView },
+    /// The public Farkle view — broadcast to everyone.
+    Farkle { view: FarkleView },
 }
 
 /// Client → server messages.
@@ -333,6 +368,15 @@ pub enum ClientMsg {
     YatzyScore {
         category: YatzyCat,
     },
+    /// Farkle: roll the remaining dice (start of turn / after setting aside).
+    FarkleRoll,
+    /// Farkle: set aside a scoring selection (indices into the current dice),
+    /// banking its points into the running turn score.
+    FarkleSetAside {
+        keep: Vec<usize>,
+    },
+    /// Farkle: bank the turn score and pass (also used to pass after a bust).
+    FarkleBank,
     /// Remove yourself from the game.
     Leave,
 }
@@ -542,6 +586,134 @@ impl YatzyState {
     }
 }
 
+// ---------- Farkle scoring (pure) ----------
+
+/// face → count (index 1..=6).
+fn farkle_counts(dice: &[u8]) -> [u8; 7] {
+    let mut c = [0u8; 7];
+    for &d in dice {
+        if (1..=6).contains(&d) {
+            c[d as usize] += 1;
+        }
+    }
+    c
+}
+
+/// Score a multiset where EVERY die must participate in scoring, or None. Singles
+/// only score for 1s (100) and 5s (50); three+ of a kind uses the doubling ladder
+/// (3=base, 4=2×, 5=4×, 6=8×; base = 1000 for 1s, else face×100). A lone 2/3/4/6
+/// (count 1–2) is a dead die → None.
+fn farkle_per_face(counts: &[u8; 7]) -> Option<u32> {
+    let mut total = 0u32;
+    for (f, &cnt) in counts.iter().enumerate().skip(1) {
+        let c = cnt as u32;
+        if c == 0 {
+            continue;
+        }
+        if c >= 3 {
+            let base = if f == 1 { 1000 } else { (f as u32) * 100 };
+            total += base * (1 << (c - 3)); // ×2 per die beyond three
+        } else if f == 1 {
+            total += c * 100;
+        } else if f == 5 {
+            total += c * 50;
+        } else {
+            return None; // a 1–2 count of a non-1/5 face can't be used
+        }
+    }
+    Some(total)
+}
+
+fn is_three_pairs(counts: &[u8; 7]) -> bool {
+    let pairs: u8 = counts[1..=6].iter().map(|&c| c / 2).sum();
+    pairs == 3 && counts[1..=6].iter().all(|&c| c.is_multiple_of(2))
+}
+
+fn is_two_triplets(counts: &[u8; 7]) -> bool {
+    (1..=6).filter(|&f| counts[f] == 3).count() == 2
+}
+
+/// Best score for an EXACT selection (all dice must be used), or None if the
+/// selection has a die that scores nothing. Six-dice specials (straight / three
+/// pairs / two triplets) are considered when 6 dice are selected.
+fn farkle_score_exact(dice: &[u8]) -> Option<u32> {
+    let counts = farkle_counts(dice);
+    let mut best = farkle_per_face(&counts);
+    if dice.len() == 6 {
+        let mut consider = |v: u32| best = Some(best.unwrap_or(0).max(v));
+        if (1..=6).all(|f| counts[f] == 1) {
+            consider(1500); // straight
+        }
+        if is_three_pairs(&counts) {
+            consider(1500);
+        }
+        if is_two_triplets(&counts) {
+            consider(2500);
+        }
+    }
+    best.filter(|&s| s > 0)
+}
+
+/// Does a roll contain ANY scoring die? (false = a Farkle / bust.)
+fn farkle_has_score(dice: &[u8]) -> bool {
+    let c = farkle_counts(dice);
+    if c[1] > 0 || c[5] > 0 {
+        return true;
+    }
+    if (1..=6).any(|f| c[f] >= 3) {
+        return true;
+    }
+    dice.len() == 6 && (is_three_pairs(&c) || is_two_triplets(&c))
+}
+
+/// Farkle match state (present only while `mode == Farkle`). Dice are public.
+struct FarkleState {
+    order: Vec<String>,
+    scores: HashMap<String, u32>,
+    turn: usize,
+    target: u32,
+    /// The dice just rolled, waiting to be set aside.
+    dice: Vec<u8>,
+    /// Points set aside this turn, not yet banked.
+    turn_score: u32,
+    /// Dice available to roll next (6 = fresh hand / hot dice).
+    remaining: u8,
+    /// A roll landed; the player must set aside before rolling again or banking.
+    must_pick: bool,
+    /// The last roll scored nothing.
+    busted: bool,
+    winner: Option<String>,
+    over: bool,
+}
+
+impl FarkleState {
+    fn current_id(&self) -> Option<String> {
+        if self.over {
+            return None;
+        }
+        self.order.get(self.turn).cloned()
+    }
+    fn score_of(&self, id: &str) -> u32 {
+        self.scores.get(id).copied().unwrap_or(0)
+    }
+    /// Start a fresh turn for the current player.
+    fn reset_turn(&mut self) {
+        self.dice.clear();
+        self.turn_score = 0;
+        self.remaining = 6;
+        self.must_pick = false;
+        self.busted = false;
+    }
+    /// No one has scored and the turn hasn't started — safe to re-deal on join.
+    fn pristine(&self) -> bool {
+        self.turn == 0
+            && !self.must_pick
+            && self.turn_score == 0
+            && self.dice.is_empty()
+            && self.scores.values().all(|&s| s == 0)
+    }
+}
+
 pub struct Room {
     pub code: String,
     pub players: Vec<Player>,
@@ -555,6 +727,7 @@ pub struct Room {
     pub last_activity: Instant,
     liars: Option<LiarsState>,
     yatzy: Option<YatzyState>,
+    farkle: Option<FarkleState>,
     roll_seq: u64,
     max_dice: u8,
 }
@@ -575,6 +748,7 @@ impl Room {
             last_activity: Instant::now(),
             liars: None,
             yatzy: None,
+            farkle: None,
             roll_seq: 0,
             max_dice,
         }
@@ -703,6 +877,9 @@ impl Room {
             ClientMsg::YatzyRoll => self.yatzy_roll(actor_id),
             ClientMsg::YatzyHold { index } => self.yatzy_hold(actor_id, index),
             ClientMsg::YatzyScore { category } => self.yatzy_score(actor_id, category),
+            ClientMsg::FarkleRoll => self.farkle_roll(actor_id),
+            ClientMsg::FarkleSetAside { keep } => self.farkle_set_aside(actor_id, keep),
+            ClientMsg::FarkleBank => self.farkle_bank(actor_id),
             ClientMsg::Leave => self.remove_player(actor_id),
         }
     }
@@ -832,8 +1009,29 @@ impl Room {
                 }
             }
         }
+        // A leaver drops out of any Farkle match in progress.
+        if let Some(g) = self.farkle.as_mut() {
+            if let Some(pos) = g.order.iter().position(|id| id == actor_id) {
+                let was_current = pos == g.turn;
+                g.order.remove(pos);
+                g.scores.remove(actor_id);
+                if g.order.is_empty() {
+                    g.over = true;
+                    g.winner = None;
+                } else {
+                    if pos < g.turn {
+                        g.turn -= 1;
+                    }
+                    g.turn %= g.order.len();
+                    if was_current {
+                        g.reset_turn(); // the next player starts fresh
+                    }
+                }
+            }
+        }
         self.broadcast_liars();
         self.broadcast_yatzy();
+        self.broadcast_farkle();
         self.broadcast_sync();
     }
 
@@ -865,6 +1063,10 @@ impl Room {
                 self.start_yatzy();
                 self.broadcast_yatzy();
             }
+            Mode::Farkle if self.farkle.as_ref().is_some_and(|g| g.pristine()) => {
+                self.start_farkle();
+                self.broadcast_farkle();
+            }
             _ => {}
         }
     }
@@ -872,26 +1074,31 @@ impl Room {
     /// Switch game mode. Entering `liars`/`yatzy` deals a fresh match to the
     /// current players; anything else falls back to free mode.
     fn set_mode(&mut self, mode: &str) {
+        // Drop any prior match state; the chosen game deals its own below.
+        self.liars = None;
+        self.yatzy = None;
+        self.farkle = None;
         match mode {
             "liars" => {
                 self.mode = Mode::Liars;
-                self.yatzy = None;
                 self.start_liars();
             }
             "yatzy" => {
                 self.mode = Mode::Yatzy;
-                self.liars = None;
                 self.start_yatzy();
+            }
+            "farkle" => {
+                self.mode = Mode::Farkle;
+                self.start_farkle();
             }
             _ => {
                 self.mode = Mode::Free;
-                self.liars = None;
-                self.yatzy = None;
             }
         }
         self.broadcast_sync(); // the `mode` field changed for everyone
         self.broadcast_liars(); // deal the (personalized) Liar's view, if any
         self.broadcast_yatzy(); // deal the (public) Yatzy view, if any
+        self.broadcast_farkle(); // deal the (public) Farkle view, if any
     }
 
     fn start_liars(&mut self) {
@@ -1258,6 +1465,160 @@ impl Room {
         if self.mode == Mode::Yatzy {
             if let Some(view) = self.yatzy_view() {
                 let _ = self.tx.send(ServerMsg::Yatzy { view });
+            }
+        }
+    }
+
+    // ---------- Farkle ----------
+
+    /// Deal a fresh Farkle match to the current players (zeroed scores).
+    fn start_farkle(&mut self) {
+        let order: Vec<String> = self.players.iter().map(|p| p.id.clone()).collect();
+        let scores = order.iter().map(|id| (id.clone(), 0)).collect();
+        self.farkle = Some(FarkleState {
+            order,
+            scores,
+            turn: 0,
+            target: 10_000,
+            dice: Vec::new(),
+            turn_score: 0,
+            remaining: 6,
+            must_pick: false,
+            busted: false,
+            winner: None,
+            over: false,
+        });
+    }
+
+    /// Roll the remaining dice. Only the current player, only when not mid-pick.
+    /// No scoring dice → the turn busts (running points lost, tap to pass).
+    fn farkle_roll(&mut self, actor: &str) {
+        let mut rng = rand::rng();
+        {
+            let Some(g) = self.farkle.as_mut() else {
+                return;
+            };
+            if g.over || g.must_pick || g.busted {
+                return;
+            }
+            if g.order.get(g.turn).map(|s| s.as_str()) != Some(actor) {
+                return;
+            }
+            let n = g.remaining.clamp(1, 6);
+            let dice: Vec<u8> = (0..n).map(|_| rng.random_range(1..=6)).collect();
+            if farkle_has_score(&dice) {
+                g.dice = dice;
+                g.must_pick = true;
+            } else {
+                // Farkle — lose the turn's points; the player taps to pass.
+                g.dice = dice;
+                g.turn_score = 0;
+                g.busted = true;
+                g.must_pick = false;
+            }
+        }
+        self.broadcast_farkle();
+    }
+
+    /// Set aside a scoring selection (indices into the current dice). Adds its
+    /// score to the running turn total; empties all six = hot dice (roll again).
+    fn farkle_set_aside(&mut self, actor: &str, keep: Vec<usize>) {
+        {
+            let Some(g) = self.farkle.as_mut() else {
+                return;
+            };
+            if g.over || g.busted || !g.must_pick {
+                return;
+            }
+            if g.order.get(g.turn).map(|s| s.as_str()) != Some(actor) {
+                return;
+            }
+            // Validate indices: in range, unique, non-empty.
+            let mut seen = HashSet::new();
+            if keep.is_empty() || keep.iter().any(|&i| i >= g.dice.len() || !seen.insert(i)) {
+                return;
+            }
+            let picked: Vec<u8> = keep.iter().map(|&i| g.dice[i]).collect();
+            let Some(points) = farkle_score_exact(&picked) else {
+                return; // selection isn't a valid all-scoring set
+            };
+            g.turn_score += points;
+            let kept = keep.len() as u8;
+            g.remaining = if kept >= g.remaining {
+                6
+            } else {
+                g.remaining - kept
+            }; // hot dice → 6
+            g.dice.clear();
+            g.must_pick = false;
+        }
+        self.broadcast_farkle();
+    }
+
+    /// Bank the running turn score (or just pass, after a bust) and advance.
+    fn farkle_bank(&mut self, actor: &str) {
+        {
+            let Some(g) = self.farkle.as_mut() else {
+                return;
+            };
+            if g.over {
+                return;
+            }
+            if g.order.get(g.turn).map(|s| s.as_str()) != Some(actor) {
+                return;
+            }
+            // Can't bank mid-pick (must set aside the roll first) unless busted.
+            if g.must_pick && !g.busted {
+                return;
+            }
+            if !g.busted {
+                let total = g.score_of(actor) + g.turn_score;
+                g.scores.insert(actor.to_string(), total);
+                if total >= g.target {
+                    g.over = true;
+                    g.winner = Some(actor.to_string());
+                }
+            }
+            if !g.over {
+                let n = g.order.len();
+                g.turn = if n == 0 { 0 } else { (g.turn + 1) % n };
+                g.reset_turn();
+            }
+        }
+        self.broadcast_farkle();
+    }
+
+    /// Build the public Farkle view.
+    pub fn farkle_view(&self) -> Option<FarkleView> {
+        let g = self.farkle.as_ref()?;
+        let scores = g
+            .order
+            .iter()
+            .map(|id| FarkleScore {
+                player_id: id.clone(),
+                score: g.score_of(id),
+            })
+            .collect();
+        Some(FarkleView {
+            order: g.order.clone(),
+            current_player_id: g.current_id(),
+            scores,
+            target: g.target,
+            dice: g.dice.clone(),
+            turn_score: g.turn_score,
+            remaining: g.remaining,
+            must_pick: g.must_pick,
+            busted: g.busted,
+            winner: g.winner.clone(),
+            over: g.over,
+        })
+    }
+
+    /// Broadcast the public Farkle view to every subscriber.
+    pub fn broadcast_farkle(&self) {
+        if self.mode == Mode::Farkle {
+            if let Some(view) = self.farkle_view() {
+                let _ = self.tx.send(ServerMsg::Farkle { view });
             }
         }
     }
@@ -1922,5 +2283,177 @@ mod tests {
             .find(|c| c.category == YatzyCat::Chance)
             .unwrap();
         assert_eq!(chance.value, 15);
+    }
+
+    // ---------- Farkle ----------
+
+    fn start_farkle_room(n: usize) -> (Room, Vec<String>) {
+        let mut room = room_with(n);
+        let id = ids(&room);
+        room.apply(
+            &id[0],
+            ClientMsg::SetMode {
+                mode: "farkle".into(),
+            },
+        );
+        (room, id)
+    }
+
+    /// Force the current Farkle dice + into the "must pick" state.
+    fn set_farkle_dice(room: &mut Room, dice: Vec<u8>) {
+        let g = room.farkle.as_mut().unwrap();
+        g.remaining = dice.len() as u8;
+        g.dice = dice;
+        g.must_pick = true;
+        g.busted = false;
+    }
+
+    #[test]
+    fn farkle_scoring_rules() {
+        // Singles.
+        assert_eq!(farkle_score_exact(&[1]), Some(100));
+        assert_eq!(farkle_score_exact(&[5]), Some(50));
+        assert_eq!(farkle_score_exact(&[1, 5]), Some(150));
+        // A lone non-1/5 die can't be set aside.
+        assert_eq!(farkle_score_exact(&[2]), None);
+        assert_eq!(farkle_score_exact(&[1, 2]), None); // the 2 is dead
+                                                       // Three of a kind + the doubling ladder.
+        assert_eq!(farkle_score_exact(&[1, 1, 1]), Some(1000));
+        assert_eq!(farkle_score_exact(&[2, 2, 2]), Some(200));
+        assert_eq!(farkle_score_exact(&[6, 6, 6]), Some(600));
+        assert_eq!(farkle_score_exact(&[1, 1, 1, 1]), Some(2000)); // 4 of a kind
+        assert_eq!(farkle_score_exact(&[5, 5, 5, 5, 5]), Some(2000)); // 500×4
+        assert_eq!(farkle_score_exact(&[2, 2, 2, 2, 2, 2]), Some(1600)); // 200×8
+                                                                         // Combined.
+        assert_eq!(farkle_score_exact(&[1, 1, 1, 5]), Some(1050));
+        // Six-dice specials.
+        assert_eq!(farkle_score_exact(&[1, 2, 3, 4, 5, 6]), Some(1500)); // straight
+        assert_eq!(farkle_score_exact(&[2, 2, 3, 3, 4, 4]), Some(1500)); // three pairs
+        assert_eq!(farkle_score_exact(&[2, 2, 2, 4, 4, 4]), Some(2500)); // two triplets
+    }
+
+    #[test]
+    fn farkle_bust_detection() {
+        assert!(farkle_has_score(&[1, 2, 3])); // has a 1
+        assert!(farkle_has_score(&[5, 6, 2])); // has a 5
+        assert!(farkle_has_score(&[3, 3, 3])); // triple
+        assert!(!farkle_has_score(&[2, 3, 4])); // nothing
+        assert!(!farkle_has_score(&[2, 3, 4, 6])); // nothing
+        assert!(farkle_has_score(&[2, 2, 3, 3, 4, 4])); // three pairs (6 dice)
+    }
+
+    #[test]
+    fn farkle_start_zeroes_scores() {
+        let (room, id) = start_farkle_room(2);
+        assert_eq!(room.mode, Mode::Farkle);
+        let v = room.farkle_view().unwrap();
+        assert_eq!(v.order.len(), 2);
+        assert_eq!(v.current_player_id.as_deref(), Some(id[0].as_str()));
+        assert_eq!(v.remaining, 6);
+        assert!(!v.must_pick && !v.busted);
+        assert!(v.scores.iter().all(|s| s.score == 0));
+    }
+
+    #[test]
+    fn farkle_set_aside_and_bank() {
+        let (mut room, id) = start_farkle_room(2);
+        room.apply(&id[0], ClientMsg::FarkleRoll);
+        set_farkle_dice(&mut room, vec![1, 1, 1, 2, 3, 4]); // three 1s + junk
+                                                            // Keep the three 1s (indices 0,1,2) → 1000.
+        room.apply(
+            &id[0],
+            ClientMsg::FarkleSetAside {
+                keep: vec![0, 1, 2],
+            },
+        );
+        let v = room.farkle_view().unwrap();
+        assert_eq!(v.turn_score, 1000);
+        assert_eq!(v.remaining, 3);
+        assert!(!v.must_pick);
+        // Bank → score 1000, turn passes to id[1].
+        room.apply(&id[0], ClientMsg::FarkleBank);
+        let v2 = room.farkle_view().unwrap();
+        let p0 = v2.scores.iter().find(|s| s.player_id == id[0]).unwrap();
+        assert_eq!(p0.score, 1000);
+        assert_eq!(v2.current_player_id.as_deref(), Some(id[1].as_str()));
+        assert_eq!(v2.turn_score, 0);
+    }
+
+    #[test]
+    fn farkle_invalid_selection_rejected() {
+        let (mut room, id) = start_farkle_room(1);
+        room.apply(&id[0], ClientMsg::FarkleRoll);
+        set_farkle_dice(&mut room, vec![1, 2, 3, 4, 6, 6]);
+        // Trying to keep a lone 2 (index 1) is invalid — ignored.
+        room.apply(&id[0], ClientMsg::FarkleSetAside { keep: vec![1] });
+        let v = room.farkle_view().unwrap();
+        assert_eq!(v.turn_score, 0);
+        assert!(v.must_pick); // still waiting for a valid pick
+    }
+
+    #[test]
+    fn farkle_hot_dice_refreshes_to_six() {
+        let (mut room, id) = start_farkle_room(1);
+        room.apply(&id[0], ClientMsg::FarkleRoll);
+        set_farkle_dice(&mut room, vec![1, 1, 1, 1, 1, 1]); // all six score
+        room.apply(
+            &id[0],
+            ClientMsg::FarkleSetAside {
+                keep: vec![0, 1, 2, 3, 4, 5],
+            },
+        );
+        let v = room.farkle_view().unwrap();
+        assert_eq!(v.remaining, 6); // hot dice → full hand again
+        assert_eq!(v.turn_score, 8000); // six 1s = 1000×8
+    }
+
+    #[test]
+    fn farkle_bust_loses_turn_points() {
+        let (mut room, id) = start_farkle_room(2);
+        room.apply(&id[0], ClientMsg::FarkleRoll);
+        set_farkle_dice(&mut room, vec![1, 1, 1, 2, 3, 4]);
+        room.apply(
+            &id[0],
+            ClientMsg::FarkleSetAside {
+                keep: vec![0, 1, 2],
+            },
+        ); // +1000
+           // Next roll busts.
+        room.apply(&id[0], ClientMsg::FarkleRoll);
+        {
+            let g = room.farkle.as_mut().unwrap();
+            g.dice = vec![2, 3, 4]; // no score
+            g.turn_score = 0;
+            g.busted = true;
+            g.must_pick = false;
+        }
+        // Pass (bank while busted) → 0 banked, turn to id[1].
+        room.apply(&id[0], ClientMsg::FarkleBank);
+        let v = room.farkle_view().unwrap();
+        let p0 = v.scores.iter().find(|s| s.player_id == id[0]).unwrap();
+        assert_eq!(p0.score, 0);
+        assert_eq!(v.current_player_id.as_deref(), Some(id[1].as_str()));
+    }
+
+    #[test]
+    fn farkle_reaching_target_wins() {
+        let (mut room, id) = start_farkle_room(1);
+        room.farkle
+            .as_mut()
+            .unwrap()
+            .scores
+            .insert(id[0].clone(), 9500);
+        room.apply(&id[0], ClientMsg::FarkleRoll);
+        set_farkle_dice(&mut room, vec![1, 1, 1, 2, 3, 4]); // +1000 → 10500
+        room.apply(
+            &id[0],
+            ClientMsg::FarkleSetAside {
+                keep: vec![0, 1, 2],
+            },
+        );
+        room.apply(&id[0], ClientMsg::FarkleBank);
+        let v = room.farkle_view().unwrap();
+        assert!(v.over);
+        assert_eq!(v.winner.as_deref(), Some(id[0].as_str()));
     }
 }

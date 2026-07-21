@@ -80,7 +80,7 @@ async fn create_game(
         // Start the chosen game up front (free needs nothing). No subscribers yet,
         // so the broadcasts are no-ops; the host's first connect gets the view.
         if let Some(m) = mode.as_deref() {
-            if m == "liars" || m == "yatzy" {
+            if m == "liars" || m == "yatzy" || m == "farkle" {
                 r.set_game_mode(m);
             }
         }

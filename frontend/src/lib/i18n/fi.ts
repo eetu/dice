@@ -61,6 +61,7 @@ export const fi: Catalog = {
   freeDice: "Vapaat nopat",
   liarsDice: "Valehtelijan nopat",
   yatzyDice: "Yatzy",
+  farkleDice: "Farkle",
   diceCount: "Noppien määrä",
   diceSelectLabel: "Nopat",
   tableSelectLabel: "Pöytä",
@@ -171,6 +172,25 @@ export const fi: Catalog = {
     chance: "Sattuma",
     yatzy: "Yatzy",
   } as Record<string, string>,
+
+  // Farkle
+  farkleTarget: (n: number) => `Ensimmäisenä ${n}`,
+  farkleRoll: "Heitä",
+  farkleRollRemaining: (n: number) => `Heitä ${n} noppaa`,
+  farkleBank: (n: number) => `Pankkiin ${n}`,
+  farklePass: "Ohita",
+  farkleThisTurn: (n: number) => `Tällä vuorolla: ${n}`,
+  farklePick: "Napauta pisteyttäviä noppia sivuun",
+  farkleSetAside: (n: number) => `Sivuun +${n}`,
+  farkleHotDice: "Kuumat nopat! Heitä kaikki kuusi uudelleen",
+  farkleBusted: "Farkle! Ei pisteitä — menetät vuoron",
+  farkleYourRoll: "Sinun vuorosi — heitä",
+  farkleWaiting: (name: string) => `Odotetaan pelaajaa ${name}…`,
+  farkleKept: "Sivussa",
+  farkleWin: (name: string, isYou: boolean) =>
+    isYou ? "Voitit!" : `${name} voittaa!`,
+  farkleHint:
+    "Laita joka heitolla vähintään yksi pisteyttävä noppa sivuun, sitten pankita tai jatka onneasi. Jos et saa yhtään pisteyttävää noppaa, menetät vuoron pisteet.",
 
   // Table (deck) names
   decks: {

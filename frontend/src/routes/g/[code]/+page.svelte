@@ -9,6 +9,7 @@
   import { page } from "$app/state";
   import { api, ApiError, type Mode, type YatzyCat } from "$lib/api";
   import DiceStage from "$lib/components/DiceStage.svelte";
+  import FarkleBoard from "$lib/components/FarkleBoard.svelte";
   import LangToggle from "$lib/components/LangToggle.svelte";
   import LiarsBoard from "$lib/components/LiarsBoard.svelte";
   import Modal from "$lib/components/Modal.svelte";
@@ -25,6 +26,7 @@
   import { THEMES } from "$lib/dice/themes";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
+  import { farkle } from "$lib/stores/farkle.svelte";
   import { game } from "$lib/stores/game.svelte";
   import { liars } from "$lib/stores/liars.svelte";
   import { session } from "$lib/stores/session.svelte";
@@ -88,6 +90,7 @@
       game.reset();
       liars.reset();
       yatzy.reset();
+      farkle.reset();
       wakeLock.disable();
     };
   });
@@ -170,6 +173,15 @@
   function yatzyScore(category: YatzyCat) {
     socket.send({ type: "yatzyScore", category });
   }
+  function farkleRoll() {
+    socket.send({ type: "farkleRoll" });
+  }
+  function farkleSetAside(keep: number[]) {
+    socket.send({ type: "farkleSetAside", keep });
+  }
+  function farkleBank() {
+    socket.send({ type: "farkleBank" });
+  }
   function rename(name: string) {
     session.setName(name);
     socket.send({ type: "setName", name });
@@ -191,7 +203,7 @@
   }
 </script>
 
-<div class="page" class:boarded={mode === "yatzy"}>
+<div class="page" class:boarded={mode === "yatzy" || mode === "farkle"}>
   <header>
     <div class="hleft">
       <a class="home" href={resolve("/")} onclick={() => socket.disconnect()}
@@ -292,6 +304,16 @@
           onHold={yatzyHold}
           onScore={yatzyScore}
           onNewMatch={() => setMode("yatzy")}
+        />
+      </div>
+    {:else if mode === "farkle"}
+      <div class="board">
+        <FarkleBoard
+          {myId}
+          onRoll={farkleRoll}
+          onSetAside={farkleSetAside}
+          onBank={farkleBank}
+          onNewMatch={() => setMode("farkle")}
         />
       </div>
     {:else}
@@ -397,6 +419,13 @@
             onclick={() => setMode("yatzy")}
           >
             {i18n.m.yatzyDice}
+          </button>
+          <button
+            class:on={mode === "farkle"}
+            aria-pressed={mode === "farkle"}
+            onclick={() => setMode("farkle")}
+          >
+            {i18n.m.farkleDice}
           </button>
         </div>
       </div>
@@ -570,7 +599,8 @@
     display: flex;
   }
   .board :global(.liars),
-  .board :global(.yatzy) {
+  .board :global(.yatzy),
+  .board :global(.farkle) {
     flex: 1;
     min-width: 0;
   }
@@ -633,13 +663,13 @@
   .name-input:focus:not(:focus-visible) {
     outline: none;
   }
-  /* Segmented control (Game mode). */
+  /* Game selector — 2×2 grid so four games fit without overflowing. */
   .seg {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
     gap: 0.4rem;
   }
   .seg button {
-    flex: 1;
     min-height: 44px;
     padding: 0.55em 0.4em;
     border: 1px solid var(--halo-border);

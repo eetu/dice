@@ -72,21 +72,23 @@ async fn handle_socket(
                 let snap = r.snapshot();
                 let liars = r.liars_view(&my_id);
                 let yatzy = r.yatzy_view();
-                Some((my_id, rx, snap, liars, yatzy))
+                let farkle = r.farkle_view();
+                Some((my_id, rx, snap, liars, yatzy, farkle))
             }
             None => None,
         }
     };
-    let Some((my_id, mut rx, snapshot, liars, yatzy)) = attached else {
+    let Some((my_id, mut rx, snapshot, liars, yatzy, farkle)) = attached else {
         let _ = socket.send(Message::Close(None)).await;
         return;
     };
 
     // Push the full state to just this socket: the base snapshot, plus the running
-    // game's view (a personalized Liar's Dice view or the public Yatzy view).
+    // game's view (a personalized Liar's Dice view, or the public Yatzy/Farkle one).
     for msg in std::iter::once(ServerMsg::Sync { state: snapshot })
         .chain(liars.map(|view| ServerMsg::Liars { view }))
         .chain(yatzy.map(|view| ServerMsg::Yatzy { view }))
+        .chain(farkle.map(|view| ServerMsg::Farkle { view }))
     {
         if let Ok(txt) = serde_json::to_string(&msg) {
             if socket.send(Message::Text(txt.into())).await.is_err() {

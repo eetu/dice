@@ -60,6 +60,7 @@ export const en = {
   freeDice: "Free dice",
   liarsDice: "Liar's Dice",
   yatzyDice: "Yatzy",
+  farkleDice: "Farkle",
   diceCount: "Dice count",
   diceSelectLabel: "Dice",
   tableSelectLabel: "Table",
@@ -168,6 +169,25 @@ export const en = {
     chance: "Chance",
     yatzy: "Yatzy",
   } as Record<string, string>,
+
+  // Farkle
+  farkleTarget: (n: number) => `First to ${n}`,
+  farkleRoll: "Roll",
+  farkleRollRemaining: (n: number) => `Roll ${n} ${n === 1 ? "die" : "dice"}`,
+  farkleBank: (n: number) => `Bank ${n}`,
+  farklePass: "Pass",
+  farkleThisTurn: (n: number) => `This turn: ${n}`,
+  farklePick: "Tap scoring dice to set aside",
+  farkleSetAside: (n: number) => `Set aside +${n}`,
+  farkleHotDice: "Hot dice! Roll all six again",
+  farkleBusted: "Farkle! No score — you lose this turn",
+  farkleYourRoll: "Your turn — roll",
+  farkleWaiting: (name: string) => `Waiting for ${name}…`,
+  farkleKept: "Set aside",
+  farkleWin: (name: string, isYou: boolean) =>
+    isYou ? "You win!" : `${name} wins!`,
+  farkleHint:
+    "Set aside at least one scoring die each roll, then bank or push your luck. Roll no scoring dice and you lose the turn's points.",
 
   // Table (deck) names, keyed by deck id.
   decks: {

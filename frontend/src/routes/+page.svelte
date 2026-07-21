@@ -18,6 +18,7 @@
     { mode: "free", label: () => i18n.m.freeDice },
     { mode: "liars", label: () => i18n.m.liarsDice },
     { mode: "yatzy", label: () => i18n.m.yatzyDice },
+    { mode: "farkle", label: () => i18n.m.farkleDice },
   ];
 
   async function create() {
@@ -178,13 +179,13 @@
     background: var(--halo-bg-light);
     color: var(--halo-text-main);
   }
-  /* Game selector (segmented). */
+  /* Game selector — 2×2 grid so four games fit without overflowing. */
   .seg {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
     gap: 0.4rem;
   }
   .seg button {
-    flex: 1;
     min-height: 44px;
     padding: 0.5em 0.3em;
     border: 1px solid var(--halo-border);

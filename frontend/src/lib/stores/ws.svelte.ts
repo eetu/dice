@@ -5,6 +5,7 @@
 import { base } from "$app/paths";
 import type { ClientMsg, ServerMsg } from "$lib/api";
 
+import { farkle } from "./farkle.svelte";
 import { game } from "./game.svelte";
 import { liars } from "./liars.svelte";
 import { yatzy } from "./yatzy.svelte";
@@ -32,6 +33,9 @@ function dispatch(msg: ServerMsg): void {
       break;
     case "yatzy":
       yatzy.apply(msg.view);
+      break;
+    case "farkle":
+      farkle.apply(msg.view);
       break;
     // "liarsChanged" is server-internal — clients only get the personalized
     // "liars" view above.

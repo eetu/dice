@@ -19,7 +19,7 @@ export type RollRecord = {
 };
 
 /** Which game the room is playing. Mirrors `room::Mode`. */
-export type Mode = "free" | "liars" | "yatzy";
+export type Mode = "free" | "liars" | "yatzy" | "farkle";
 
 /** Full room state. Mirrors `room::Snapshot`. */
 export type Snapshot = {
@@ -127,6 +127,26 @@ export type YatzyView = {
   over: boolean;
 };
 
+// ---- Farkle (mirrors room.rs) ----
+
+/** A player's banked Farkle total. */
+export type FarkleScore = { playerId: string; score: number };
+
+/** Public Farkle state — the same for every client. Mirrors `room::FarkleView`. */
+export type FarkleView = {
+  order: string[];
+  currentPlayerId: string | null;
+  scores: FarkleScore[];
+  target: number;
+  dice: number[];
+  turnScore: number;
+  remaining: number;
+  mustPick: boolean;
+  busted: boolean;
+  winner: string | null;
+  over: boolean;
+};
+
 /** Server → client WS messages. Mirrors `room::ServerMsg`. */
 export type ServerMsg =
   | { type: "sync"; state: Snapshot }
@@ -141,7 +161,8 @@ export type ServerMsg =
   // personalized `liars` view below (kept in the union for completeness).
   | { type: "liarsChanged" }
   | { type: "liars"; view: LiarsView }
-  | { type: "yatzy"; view: YatzyView };
+  | { type: "yatzy"; view: YatzyView }
+  | { type: "farkle"; view: FarkleView };
 
 /** Client → server WS messages. Mirrors `room::ClientMsg`. */
 export type ClientMsg =
@@ -159,6 +180,9 @@ export type ClientMsg =
   | { type: "yatzyRoll" }
   | { type: "yatzyHold"; index: number }
   | { type: "yatzyScore"; category: YatzyCat }
+  | { type: "farkleRoll" }
+  | { type: "farkleSetAside"; keep: number[] }
+  | { type: "farkleBank" }
   | { type: "leave" };
 
 /** Response from create / join. */
