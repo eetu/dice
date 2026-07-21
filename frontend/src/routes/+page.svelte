@@ -258,4 +258,13 @@
     font-size: 0.9rem;
     text-align: center;
   }
+  @media (max-width: 640px) {
+    /* Tighter gutters on a phone. */
+    .page {
+      padding: 1rem;
+    }
+    .lobby {
+      padding: 1.5rem;
+    }
+  }
 </style>

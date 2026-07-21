@@ -858,6 +858,11 @@
     .page {
       height: auto;
       min-height: 100dvh;
+      /* Tighter gutters on a phone — more room for the felt / scorecard. */
+      padding: 0.6rem;
+    }
+    header {
+      margin-bottom: 0.6rem;
     }
     /* Yatzy keeps a fixed viewport so its scorecard scrolls INSIDE the board and
        the dice + roll stay pinned as a footer (they'd otherwise fall below the
