@@ -34,6 +34,11 @@ test("yatzy: large groups page one card at a time (mobile)", async ({
   await expect(alice.locator(".yatzy .ptabs .ptab")).toHaveCount(4);
   await expect(alice.locator(".yatzy table.card")).toHaveCount(0);
 
+  // The dice tray + Roll button must still be present (regression: the shared
+  // tray was previously only rendered in the matrix branch, so large groups had
+  // no way to roll).
+  await expect(alice.locator(".yatzy button.roll")).toBeVisible();
+
   // Tapping another player's tab focuses their card.
   await alice.locator(".yatzy .ptab", { hasText: "Carol" }).click();
   await expect(alice.locator(".yatzy .ptab.focused")).toContainText("Carol");

@@ -273,106 +273,112 @@
         <button class="primary" onclick={onNewMatch}>{i18n.m.playAgain}</button>
       </div>
     </div>
-  {:else if paged}
-    <!-- Large groups: one player's card at a time (tap a tab or swipe). -->
-    <div class="paged">
-      <div class="ptabs">
-        {#each view.order as pid, i (pid)}
-          <button
-            class="ptab"
-            class:focused={i === focusIdx}
-            class:turn={pid === view.currentPlayerId}
-            onclick={() => (focus = i)}
-          >
-            <span class="ptn">{abbrevName(nameOf(pid), 8)}</span>
-            <span class="pts">{cardTotals(pid).total}</span>
-          </button>
-        {/each}
-      </div>
-      <!-- Swipe is a progressive enhancement; the tabs above are the accessible
-        (and keyboard) way to switch players. -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="pcard" onpointerdown={swipeStart} onpointerup={swipeEnd}>
-        {#each UPPER as cat (cat)}{@render prow(cat)}{/each}
-        <div class="prow sub">
-          <span class="plabel">{i18n.m.yatzyUpper}</span>
-          <span class="pv sum">{cardTotals(focusId).upper}</span>
-        </div>
-        <div class="prow sub">
-          <span class="plabel hintcat" title={i18n.m.yatzyBonusHint}
-            >{i18n.m.yatzyBonus}</span
-          >
-          {@render pbonus(focusId)}
-        </div>
-        {#each LOWER as cat (cat)}{@render prow(cat)}{/each}
-        <div class="prow grand">
-          <span class="plabel">{i18n.m.yatzyTotal}</span>
-          <span class="pv sum">{cardTotals(focusId).total}</span>
-        </div>
-      </div>
-      <p class="swipehint">{i18n.m.yatzySwipeHint}</p>
-    </div>
   {:else}
-    <!-- Scorecard: categories × players -->
-    <div class="card-scroll">
-      <table class="card">
-        <thead>
-          <tr>
-            <th class="cat"></th>
-            {#each view.order as pid (pid)}
-              <th class:turn={pid === view.currentPlayerId} title={nameOf(pid)}
-                >{abbrevName(nameOf(pid), nameMax)}</th
-              >
-            {/each}
-          </tr>
-        </thead>
-        <tbody>
-          {#each UPPER as cat (cat)}
-            <tr>
-              <th class="cat">{i18n.m.yatzyCats[cat]}</th>
-              {#each view.order as pid (pid)}{@render cell(pid, cat)}{/each}
-            </tr>
-          {/each}
-          <tr class="sub">
-            <th class="cat">{i18n.m.yatzyUpper}</th>
-            {#each view.order as pid (pid)}
-              <td class="val sum">{cardTotals(pid).upper}</td>
-            {/each}
-          </tr>
-          <tr class="sub">
-            <th class="cat hintcat" title={i18n.m.yatzyBonusHint}
-              >{i18n.m.yatzyBonus}</th
+    <!-- Scorecard: a paged single-player card for large groups, else the matrix.
+      The dice tray below is shared by both. -->
+    {#if paged}
+      <!-- Large groups: one player's card at a time (tap a tab or swipe). -->
+      <div class="paged">
+        <div class="ptabs">
+          {#each view.order as pid, i (pid)}
+            <button
+              class="ptab"
+              class:focused={i === focusIdx}
+              class:turn={pid === view.currentPlayerId}
+              onclick={() => (focus = i)}
             >
-            {#each view.order as pid (pid)}
-              {@const t = cardTotals(pid)}
-              {#if t.bonus > 0}
-                <td class="val sum">{t.bonus}</td>
-              {:else if upperOpen(pid)}
-                <td class="val togo" title={i18n.m.yatzyToGo(63 - t.upper)}
-                  >{63 - t.upper}</td
-                >
-              {:else}
-                <td class="val zero">0</td>
-              {/if}
-            {/each}
-          </tr>
-          {#each LOWER as cat (cat)}
-            <tr>
-              <th class="cat">{i18n.m.yatzyCats[cat]}</th>
-              {#each view.order as pid (pid)}{@render cell(pid, cat)}{/each}
-            </tr>
+              <span class="ptn">{abbrevName(nameOf(pid), 8)}</span>
+              <span class="pts">{cardTotals(pid).total}</span>
+            </button>
           {/each}
-          <tr class="grand">
-            <th class="cat">{i18n.m.yatzyTotal}</th>
-            {#each view.order as pid (pid)}
-              <td class="val sum">{cardTotals(pid).total}</td>
+        </div>
+        <!-- Swipe is a progressive enhancement; the tabs above are the accessible
+        (and keyboard) way to switch players. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="pcard" onpointerdown={swipeStart} onpointerup={swipeEnd}>
+          {#each UPPER as cat (cat)}{@render prow(cat)}{/each}
+          <div class="prow sub">
+            <span class="plabel">{i18n.m.yatzyUpper}</span>
+            <span class="pv sum">{cardTotals(focusId).upper}</span>
+          </div>
+          <div class="prow sub">
+            <span class="plabel hintcat" title={i18n.m.yatzyBonusHint}
+              >{i18n.m.yatzyBonus}</span
+            >
+            {@render pbonus(focusId)}
+          </div>
+          {#each LOWER as cat (cat)}{@render prow(cat)}{/each}
+          <div class="prow grand">
+            <span class="plabel">{i18n.m.yatzyTotal}</span>
+            <span class="pv sum">{cardTotals(focusId).total}</span>
+          </div>
+        </div>
+        <p class="swipehint">{i18n.m.yatzySwipeHint}</p>
+      </div>
+    {:else}
+      <!-- Scorecard: categories × players (small groups). -->
+      <div class="card-scroll">
+        <table class="card">
+          <thead>
+            <tr>
+              <th class="cat"></th>
+              {#each view.order as pid (pid)}
+                <th
+                  class:turn={pid === view.currentPlayerId}
+                  title={nameOf(pid)}>{abbrevName(nameOf(pid), nameMax)}</th
+                >
+              {/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each UPPER as cat (cat)}
+              <tr>
+                <th class="cat">{i18n.m.yatzyCats[cat]}</th>
+                {#each view.order as pid (pid)}{@render cell(pid, cat)}{/each}
+              </tr>
             {/each}
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            <tr class="sub">
+              <th class="cat">{i18n.m.yatzyUpper}</th>
+              {#each view.order as pid (pid)}
+                <td class="val sum">{cardTotals(pid).upper}</td>
+              {/each}
+            </tr>
+            <tr class="sub">
+              <th class="cat hintcat" title={i18n.m.yatzyBonusHint}
+                >{i18n.m.yatzyBonus}</th
+              >
+              {#each view.order as pid (pid)}
+                {@const t = cardTotals(pid)}
+                {#if t.bonus > 0}
+                  <td class="val sum">{t.bonus}</td>
+                {:else if upperOpen(pid)}
+                  <td class="val togo" title={i18n.m.yatzyToGo(63 - t.upper)}
+                    >{63 - t.upper}</td
+                  >
+                {:else}
+                  <td class="val zero">0</td>
+                {/if}
+              {/each}
+            </tr>
+            {#each LOWER as cat (cat)}
+              <tr>
+                <th class="cat">{i18n.m.yatzyCats[cat]}</th>
+                {#each view.order as pid (pid)}{@render cell(pid, cat)}{/each}
+              </tr>
+            {/each}
+            <tr class="grand">
+              <th class="cat">{i18n.m.yatzyTotal}</th>
+              {#each view.order as pid (pid)}
+                <td class="val sum">{cardTotals(pid).total}</td>
+              {/each}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    {/if}
 
-    <!-- Dice tray + roll (thumb-reachable). The die IS the hold button. -->
+    <!-- Dice tray + roll (thumb-reachable). The die IS the hold button. Shared by
+      both the paged + matrix scorecards above. -->
     <div class="tray">
       <div class="dice">
         {#each diceFaces as f, i (i)}
