@@ -143,11 +143,16 @@
     let cancelled = false;
     void tick().then(() => {
       if (cancelled) return;
+      // The glint follows the pointer — a mouse-hover delight. On touch the "pointer"
+      // is the finger, which sits right where you're tapping (dice, buttons), lighting
+      // up behind the controls. So gate it to fine pointers; touch keeps the calm
+      // static texture.
+      const fine = window.matchMedia("(pointer: fine)").matches;
       bg = glyphTile(el, {
         glyph: drawDie,
         size: 76,
         speed: 0.3,
-        interactive: true,
+        interactive: fine,
         pointerSource: "window", // canvas is pointer-events:none → track via window
         theme: palette(),
       });

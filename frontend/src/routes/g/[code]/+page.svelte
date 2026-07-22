@@ -697,6 +697,13 @@
     position: relative;
     flex: 1;
     min-height: 16rem;
+    /* Soft scrim in the page colour so the ambient die-face backdrop is calm behind
+       the (transparent) dice and the turn text; fades out so it never reads as a box. */
+    background: radial-gradient(
+      120% 92% at 50% 44%,
+      var(--halo-body) 46%,
+      transparent 100%
+    );
   }
   .side {
     min-height: 0;
