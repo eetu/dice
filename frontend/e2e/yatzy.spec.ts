@@ -42,8 +42,8 @@ test("yatzy: create, join, roll, score, turn passes (mobile)", async ({
   await expect(bob.locator("button.roll")).toBeEnabled();
   await expect(alice.locator("button.roll")).toBeDisabled();
 
-  // The header code is the invite button — it opens the QR/share panel even in a
-  // board game (the felt's QR flip isn't available here).
+  // The header code is the invite button — it opens the QR/share panel in every
+  // mode (the sole invite affordance now).
   await bob.locator("button.code-chip").click();
   await expect(bob.locator(".qr img")).toBeVisible();
 

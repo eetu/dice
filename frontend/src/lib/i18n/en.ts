@@ -40,7 +40,6 @@ export const en = {
   // Dice stage
   yourTurn: "Your turn",
   invite: "Invite",
-  diceBack: "Dice",
   tapToRoll: "Tap to roll",
   tapOrShakeToRoll: "Tap or shake to roll",
   shaking: "Shaking… let go to roll",

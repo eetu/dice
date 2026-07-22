@@ -1,5 +1,4 @@
 <script lang="ts">
-  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import QrCode from "@lucide/svelte/icons/qr-code";
   import Settings from "@lucide/svelte/icons/settings";
   import { onMount } from "svelte";
@@ -8,6 +7,7 @@
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
   import { api, ApiError, type Mode, type YatzyCat } from "$lib/api";
+  import DiceBackground from "$lib/components/DiceBackground.svelte";
   import DiceStage from "$lib/components/DiceStage.svelte";
   import FarkleBoard from "$lib/components/FarkleBoard.svelte";
   import LangToggle from "$lib/components/LangToggle.svelte";
@@ -41,7 +41,6 @@
     "connecting" | "ready" | "notfound" | "error" | "ended" | "name"
   >("connecting");
   let myId = $state<string | null>(null);
-  let showShare = $state(false); // flip the stage to the invite QR (free mode)
   let showSettings = $state(false);
   let showShareModal = $state(false); // header code → share panel (all modes)
   let confirmLeave = $state(false); // leaving is destructive — confirm first
@@ -203,6 +202,8 @@
   }
 </script>
 
+<DiceBackground opacity={0.1} />
+
 <div class="page" class:boarded={mode === "yatzy" || mode === "farkle"}>
   <header>
     <div class="hleft">
@@ -319,41 +320,22 @@
     {:else}
       <div class="grid">
         <section class="stage-col">
-          <div class="stack">
-            <div class="stage-face">
-              <DiceStage
-                lastRoll={game.lastRoll}
-                diceCount={snap.diceCount}
-                diceTheme={snap.diceTheme}
-                deck={snap.deck}
-                canRoll={isMyTurn && !game.rolling}
-                rolling={game.rolling}
-                onRoll={roll}
-                onSettled={() => game.endRoll()}
-              />
-              {#if currentPlayer}
-                <div class="turn-overlay" class:mine={isMyTurn}>
-                  {isMyTurn ? i18n.m.yourTurn : currentPlayer.name}
-                </div>
-              {/if}
-              <button
-                class="flip-btn front-btn"
-                aria-label={i18n.m.invite}
-                onclick={(e) => {
-                  e.stopPropagation();
-                  showShare = true;
-                }}><QrCode size={15} /> {i18n.m.invite}</button
-              >
-            </div>
-            <div class="share-face" class:hidden={!showShare}>
-              <SharePanel {code} />
-              <button
-                class="flip-btn back-btn"
-                aria-label={i18n.m.diceBack}
-                onclick={() => (showShare = false)}
-                ><ArrowLeft size={15} /> {i18n.m.diceBack}</button
-              >
-            </div>
+          <div class="stage-face">
+            <DiceStage
+              lastRoll={game.lastRoll}
+              diceCount={snap.diceCount}
+              diceTheme={snap.diceTheme}
+              deck={snap.deck}
+              canRoll={isMyTurn && !game.rolling}
+              rolling={game.rolling}
+              onRoll={roll}
+              onSettled={() => game.endRoll()}
+            />
+            {#if currentPlayer}
+              <div class="turn-overlay" class:mine={isMyTurn}>
+                {isMyTurn ? i18n.m.yourTurn : currentPlayer.name}
+              </div>
+            {/if}
           </div>
           <Toolbar
             {isMyTurn}
@@ -513,6 +495,8 @@
 
 <style>
   .page {
+    position: relative;
+    z-index: 1;
     height: 100dvh;
     display: flex;
     flex-direction: column;
@@ -709,68 +693,13 @@
     color: var(--halo-text-main);
   }
 
-  /* The stage flips between the dice (felt) and the invite QR, so the felt stays
-     the focus — especially on mobile — and the QR doesn't eat vertical space. */
-  /* A 2D crossfade between the felt and the invite panel — a real 3D flip
-     mis-composites the WebGL canvas (bleed / mirror / flicker), so both faces
-     stack in 2D and the opaque invite panel fades in over the felt. */
-  .stack {
+  /* The felt fills the stage column above the toolbar; the turn overlay sits on
+     top of it. Invites live on the header code-chip (QR), so there's no in-stage
+     invite panel. */
+  .stage-face {
     position: relative;
     flex: 1;
     min-height: 16rem;
-  }
-  .stage-face {
-    position: absolute;
-    inset: 0;
-    /* Own stacking context so the Invite button (z-index) can't paint above the
-       invite panel (share-face) that covers it. */
-    z-index: 1;
-  }
-  .share-face {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    display: grid;
-    place-items: center;
-    background: var(--halo-bg-main);
-    border-radius: var(--halo-radius);
-    box-shadow: var(--halo-shadow);
-    padding: 1rem;
-    transition: opacity 0.28s ease;
-  }
-  .share-face.hidden {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition:
-      opacity 0.28s ease,
-      visibility 0s linear 0.28s;
-  }
-  .flip-btn {
-    position: absolute;
-    z-index: 3;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3em;
-    background: var(--halo-bg-main);
-    color: var(--halo-text-muted);
-    border: 1px solid var(--halo-border);
-    border-radius: var(--halo-radius-pill);
-    min-height: 44px;
-    padding: 0.35em 0.8em;
-    font-size: 0.8rem;
-  }
-  .flip-btn:hover {
-    color: var(--halo-accent);
-    border-color: var(--halo-accent);
-  }
-  .front-btn {
-    top: 0.6rem;
-    right: 0.6rem;
-  }
-  .back-btn {
-    top: 0.6rem;
-    right: 0.6rem;
   }
   .side {
     min-height: 0;

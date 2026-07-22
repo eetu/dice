@@ -41,7 +41,6 @@ export const fi: Catalog = {
   // Dice stage
   yourTurn: "Sinun vuorosi",
   invite: "Kutsu",
-  diceBack: "Nopat",
   tapToRoll: "Napauta heittääksesi",
   tapOrShakeToRoll: "Napauta tai ravista heittääksesi",
   shaking: "Ravistetaan… irrota heittääksesi",
