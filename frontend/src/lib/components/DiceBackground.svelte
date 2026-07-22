@@ -12,7 +12,8 @@
   //    depth cue). It's driven off a window listener so it also responds to touch
   //    drags and never intercepts a tap (the layer stays pointer-events:none).
   // The per-cell shimmer is igyb's own (its wave already travels diagonally).
-  import { glyphTile, type Palette } from "@anarkisti/igyb/core";
+  import { glyphTile, type GlyphEnv, type Palette } from "@anarkisti/igyb/core";
+  import { tick } from "svelte";
 
   import { theme } from "$lib/stores/theme.svelte";
 
@@ -64,13 +65,18 @@
     ctx: CanvasRenderingContext2D,
     size: number,
     i: number,
+    env: GlyphEnv,
   ): void {
     const n = (i % 6) + 1; // the per-cell hash mixes faces across the field
     const s = size * 0.8;
     const o = -s / 2;
+    // Silver glint: brighten the outline toward `glintTo` near the pointer (squared
+    // to keep it tight) and thicken it a touch — a metallic catch of the light.
+    const t = env.highlight * env.highlight;
+    ctx.strokeStyle = ctx.fillStyle = mix(glintFrom, glintTo, t);
     ctx.save();
     ctx.rotate((-TILT * Math.PI) / 180); // keep the die upright under the field tilt
-    ctx.lineWidth = size * 0.035;
+    ctx.lineWidth = size * 0.035 * (1 + t * 0.5);
     ctx.beginPath();
     ctx.roundRect(o, o, s, s, size * 0.16);
     ctx.stroke();
@@ -92,25 +98,65 @@
     return `rgb(${c(16)}, ${c(8)}, ${c(0)})`;
   }
 
+  // Silver-glint endpoints (base outline → glint peak), refreshed from the theme in
+  // palette(); drawDie mixes between them by the per-cell pointer highlight.
+  let glintFrom: [number, number, number] = [24, 24, 24];
+  let glintTo: [number, number, number] = [205, 214, 236];
+
+  function rgbTriplet(s: string): [number, number, number] {
+    const m = s.match(/\d+/g);
+    return m ? [Number(m[0]), Number(m[1]), Number(m[2])] : [24, 24, 24];
+  }
+  function mix(
+    a: [number, number, number],
+    b: [number, number, number],
+    t: number,
+  ): string {
+    const c = (i: number): number => Math.round(a[i] + (b[i] - a[i]) * t);
+    return `rgb(${c(0)}, ${c(1)}, ${c(2)})`;
+  }
+
   function palette(): Palette {
     const s = getComputedStyle(document.documentElement);
     // The real page background is --halo-body (light-grey in light, near-black in
     // dark); draw the pattern one step lighter than it, in both themes.
     const bg = s.getPropertyValue("--halo-body").trim() || "#111";
-    const glyph = lighten(bg, 28);
+    // lighten() only pushes toward white, so a single lift can't serve both
+    // themes: on the light-grey body a tiny nudge already reads, but on the
+    // near-black dark body the same nudge is invisible. Lift more in dark.
+    const glyph = lighten(bg, theme.resolved === "dark" ? 9 : 7);
+    glintFrom = rgbTriplet(glyph);
+    // Glint peak: cool silver in dark, plain white in light.
+    glintTo = theme.resolved === "dark" ? [205, 214, 236] : [255, 255, 255];
     return { bg, fg: glyph, accents: [glyph] };
   }
 
   $effect(() => {
     theme.resolved; // re-read palette when the light/dark theme flips
-    const bg = glyphTile(el, {
-      glyph: drawDie,
-      size: 76,
-      speed: 0.3,
-      theme: palette(),
+
+    // Wait for the DOM to settle before reading the palette: the layout writes
+    // the new `data-theme` onto <html> in its own effect, and this effect can
+    // run first on a flip. Reading --halo-body before that write yields the
+    // *previous* theme's colour — the pattern would lag a step and look
+    // inverted. tick() defers the read until after data-theme lands.
+    let bg: ReturnType<typeof glyphTile> | undefined;
+    let cancelled = false;
+    void tick().then(() => {
+      if (cancelled) return;
+      bg = glyphTile(el, {
+        glyph: drawDie,
+        size: 76,
+        speed: 0.3,
+        interactive: true,
+        pointerSource: "window", // canvas is pointer-events:none → track via window
+        theme: palette(),
+      });
+      bg.start();
     });
-    bg.start();
-    return () => bg.destroy();
+    return () => {
+      cancelled = true;
+      bg?.destroy();
+    };
   });
 
   // Parallax: nudge the field a few px opposite the pointer. A window listener so

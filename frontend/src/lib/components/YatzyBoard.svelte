@@ -589,6 +589,9 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9rem;
+    /* Solid so the ambient die-face backdrop doesn't bleed through the score
+       columns (the sticky header/label cells already paint --halo-body). */
+    background: var(--halo-body);
   }
   .card th,
   .card td {
