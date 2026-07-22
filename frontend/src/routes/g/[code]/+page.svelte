@@ -561,7 +561,7 @@
     background: var(--halo-connected);
   }
   .leave {
-    background: none;
+    background: var(--halo-bg-main);
     border: 1px solid var(--halo-border);
     color: var(--halo-text-muted);
     border-radius: var(--halo-radius-pill);
@@ -598,7 +598,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: none;
+    background: var(--halo-bg-main);
     border: 1px solid var(--halo-border);
     color: var(--halo-text-muted);
     border-radius: var(--halo-radius-pill);
