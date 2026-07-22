@@ -17,7 +17,7 @@
   import { theme } from "$lib/stores/theme.svelte";
 
   type Props = { opacity?: number };
-  let { opacity = 0.16 }: Props = $props();
+  let { opacity = 1 }: Props = $props();
 
   let el: HTMLDivElement;
 
@@ -82,16 +82,23 @@
     ctx.restore();
   }
 
+  // Lighten a #rrggbb by a fixed per-channel amount → a subtle "raised" tint from
+  // any themed bg (near-white nudges to white; near-black lifts a touch).
+  function lighten(hex: string, add: number): string {
+    const n = Number.parseInt(hex.replace("#", ""), 16);
+    if (Number.isNaN(n)) return hex;
+    const c = (shift: number): number =>
+      Math.min(255, ((n >> shift) & 255) + add);
+    return `rgb(${c(16)}, ${c(8)}, ${c(0)})`;
+  }
+
   function palette(): Palette {
     const s = getComputedStyle(document.documentElement);
-    const get = (v: string, fallback: string): string =>
-      s.getPropertyValue(v).trim() || fallback;
-    return {
-      bg: get("--halo-bg-main", "#111"),
-      // A hair lighter than the bg (subtle embossed texture, not dark outlines).
-      fg: get("--halo-text-light", "#e9e9e9"),
-      accents: [get("--halo-text-light", "#e9e9e9")],
-    };
+    // The real page background is --halo-body (light-grey in light, near-black in
+    // dark); draw the pattern one step lighter than it, in both themes.
+    const bg = s.getPropertyValue("--halo-body").trim() || "#111";
+    const glyph = lighten(bg, 28);
+    return { bg, fg: glyph, accents: [glyph] };
   }
 
   $effect(() => {

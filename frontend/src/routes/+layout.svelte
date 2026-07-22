@@ -38,7 +38,7 @@
 </script>
 
 <!-- Ambient die-face backdrop on every route; content sits above it. -->
-<DiceBackground opacity={0.8} />
+<DiceBackground />
 
 <div class="bg-content">{@render children()}</div>
 
