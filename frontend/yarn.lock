@@ -30,6 +30,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@anarkisti/igyb@npm:^0.1.0":
+  version: 0.1.0
+  resolution: "@anarkisti/igyb@npm:0.1.0"
+  peerDependencies:
+    svelte: ^5
+  peerDependenciesMeta:
+    svelte:
+      optional: true
+  checksum: 10/43649974b9fd7db11157b5f5c1a52d3bbba93101e4b53dec40dd39f1a8f6775fad4243886ea873a39d1129c06a37a39c4aee82ee1b43b5110cb77b336cadfdc6
+  languageName: node
+  linkType: hard
+
 "@blazediff/core@npm:1.9.1":
   version: 1.9.1
   resolution: "@blazediff/core@npm:1.9.1"
@@ -1274,6 +1286,7 @@ __metadata:
   resolution: "dice-frontend@workspace:."
   dependencies:
     "@anarkisti/eslint-config": "npm:^1.1.0"
+    "@anarkisti/igyb": "npm:^0.1.0"
     "@fontsource/inter": "npm:^5"
     "@fontsource/space-grotesk": "npm:^5"
     "@glowbox/nixie": "npm:^1.1.0"
