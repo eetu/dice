@@ -7,7 +7,6 @@
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
   import { api, ApiError, type Mode, type YatzyCat } from "$lib/api";
-  import DiceBackground from "$lib/components/DiceBackground.svelte";
   import DiceStage from "$lib/components/DiceStage.svelte";
   import FarkleBoard from "$lib/components/FarkleBoard.svelte";
   import LangToggle from "$lib/components/LangToggle.svelte";
@@ -201,8 +200,6 @@
     await goto(resolve("/"));
   }
 </script>
-
-<DiceBackground opacity={0.1} />
 
 <div class="page" class:boarded={mode === "yatzy" || mode === "farkle"}>
   <header>
