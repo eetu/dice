@@ -57,7 +57,7 @@ pub struct Player {
 }
 
 /// One completed roll, kept in the room's history for its lifetime.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RollRecord {
     pub id: u64,
@@ -74,7 +74,7 @@ pub struct RollRecord {
 /// Liar's Dice (hidden per-player dice, bidding + calling); `yatzy` = Nordic
 /// Yatzy (public dice, up to 3 rolls/turn with holds, a 15-box scorecard);
 /// `farkle` = Farkle (push-your-luck, set aside scoring dice or bust).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Mode {
     Free,
@@ -84,7 +84,7 @@ pub enum Mode {
 }
 
 /// A Liar's Dice bid: "at least `quantity` dice showing `face`" across ALL cups.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Bid {
     pub player_id: String,
@@ -92,7 +92,7 @@ pub struct Bid {
     pub face: u8,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LiarsPhase {
     /// Someone must raise the bid or call "liar".
@@ -104,7 +104,7 @@ pub enum LiarsPhase {
 }
 
 /// One player's full hand, only sent in a `reveal` (the payoff moment).
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HandReveal {
     pub player_id: String,
@@ -112,7 +112,7 @@ pub struct HandReveal {
 }
 
 /// The outcome of a "liar" call — every cup revealed + who lost a die.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reveal {
     pub hands: Vec<HandReveal>,
@@ -383,7 +383,11 @@ pub enum ClientMsg {
 
 /// Liar's Dice match state (present only while `mode == Liars`). Hidden dice live
 /// here; they're only ever exposed through `liars_view` (your own) or a `Reveal`.
-struct LiarsState {
+/// `Serialize`/`Deserialize` are for state persistence (see `crate::persist`), not
+/// the wire protocol — this whole struct (hidden dice included) only ever hits the
+/// on-disk state file, never a socket.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct LiarsState {
     /// Turn order (player ids), captured at match start. Stable across the match;
     /// joiners after start spectate until the next `SetMode`.
     order: Vec<String>,
@@ -516,8 +520,10 @@ fn yatzy_score_cat(cat: YatzyCat, dice: &[u8]) -> u16 {
 }
 
 /// Nordic Yatzy match state (present only while `mode == Yatzy`). Dice are public,
-/// so unlike Liar's Dice there's no per-viewer hiding.
-struct YatzyState {
+/// so unlike Liar's Dice there's no per-viewer hiding. `Serialize`/`Deserialize`
+/// are for state persistence (see `crate::persist`), not the wire protocol.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct YatzyState {
     /// Turn order (player ids), captured at match start. Joiners after start
     /// spectate until the next `SetMode`.
     order: Vec<String>,
@@ -667,7 +673,10 @@ fn farkle_has_score(dice: &[u8]) -> bool {
 }
 
 /// Farkle match state (present only while `mode == Farkle`). Dice are public.
-struct FarkleState {
+/// `Serialize`/`Deserialize` are for state persistence (see `crate::persist`),
+/// not the wire protocol.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct FarkleState {
     order: Vec<String>,
     scores: HashMap<String, u32>,
     turn: usize,
@@ -714,6 +723,43 @@ impl FarkleState {
     }
 }
 
+/// On-disk schema version for the persisted state file. Bump on ANY incompatible
+/// change to `PersistedRoom` (or a type it embeds) so a stale file written by an
+/// older build is discarded rather than mis-deserialized — see `crate::persist`.
+pub(crate) const PERSIST_VERSION: u32 = 1;
+
+/// A room flattened for persistence — the durable half of [`Room`]. Excludes the
+/// live-only bits: the `broadcast::Sender` (recreated on load, fresh with no
+/// subscribers), `last_activity` (reset to now on load, so a restart grants a
+/// fresh TTL), and each player's `connected` flag (everyone is disconnected until
+/// their socket reconnects). Unlike the [`Player`] wire type, the secret `token`
+/// IS persisted here — it's what lets a reconnecting client re-authenticate after
+/// the restart. The file therefore holds secrets (written `0600`, see `persist`).
+#[derive(Serialize, Deserialize)]
+pub(crate) struct PersistedRoom {
+    pub(crate) code: String,
+    players: Vec<PersistedPlayer>,
+    mode: Mode,
+    turn_idx: usize,
+    dice_count: u8,
+    dice_theme: String,
+    deck: String,
+    history: Vec<RollRecord>,
+    roll_seq: u64,
+    max_dice: u8,
+    liars: Option<LiarsState>,
+    yatzy: Option<YatzyState>,
+    farkle: Option<FarkleState>,
+}
+
+/// A player as persisted — includes the secret `token` (see [`PersistedRoom`]).
+#[derive(Serialize, Deserialize)]
+struct PersistedPlayer {
+    id: String,
+    token: String,
+    name: String,
+}
+
 pub struct Room {
     pub code: String,
     pub players: Vec<Player>,
@@ -751,6 +797,66 @@ impl Room {
             farkle: None,
             roll_seq: 0,
             max_dice,
+        }
+    }
+
+    /// Flatten to the durable [`PersistedRoom`] for the shutdown state flush.
+    pub(crate) fn to_persisted(&self) -> PersistedRoom {
+        PersistedRoom {
+            code: self.code.clone(),
+            players: self
+                .players
+                .iter()
+                .map(|p| PersistedPlayer {
+                    id: p.id.clone(),
+                    token: p.token.clone(),
+                    name: p.name.clone(),
+                })
+                .collect(),
+            mode: self.mode,
+            turn_idx: self.turn_idx,
+            dice_count: self.dice_count,
+            dice_theme: self.dice_theme.clone(),
+            deck: self.deck.clone(),
+            history: self.history.clone(),
+            roll_seq: self.roll_seq,
+            max_dice: self.max_dice,
+            liars: self.liars.clone(),
+            yatzy: self.yatzy.clone(),
+            farkle: self.farkle.clone(),
+        }
+    }
+
+    /// Rebuild a live room from persisted state on boot: a fresh broadcast channel
+    /// (no subscribers yet), a reset TTL clock, and every player marked
+    /// disconnected until their socket reconnects with its (persisted) token.
+    pub(crate) fn from_persisted(p: PersistedRoom) -> Self {
+        let (tx, _rx) = broadcast::channel(256);
+        Room {
+            code: p.code,
+            players: p
+                .players
+                .into_iter()
+                .map(|pp| Player {
+                    id: pp.id,
+                    token: pp.token,
+                    name: pp.name,
+                    connected: false,
+                })
+                .collect(),
+            mode: p.mode,
+            turn_idx: p.turn_idx,
+            dice_count: p.dice_count,
+            dice_theme: p.dice_theme,
+            deck: p.deck,
+            history: p.history,
+            tx,
+            last_activity: Instant::now(),
+            liars: p.liars,
+            yatzy: p.yatzy,
+            farkle: p.farkle,
+            roll_seq: p.roll_seq,
+            max_dice: p.max_dice,
         }
     }
 

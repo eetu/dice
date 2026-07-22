@@ -14,7 +14,11 @@ path traversal, no secret leakage) and must degrade gracefully under abuse.
 - **Per-game secret token.** Create/join return a `token` that authenticates the
   WebSocket and every action. It's never serialized into snapshots
   (`#[serde(skip)]`), so it isn't leaked to other players; only the public
-  `playerId` is. Guessing another player's token (UUID v4) is infeasible.
+  `playerId` is. Guessing another player's token (UUID v4) is infeasible. The one
+  place a token is written outside the process is the optional restart-persistence
+  file (`DICE_STATE_FILE`, off by default): it must include tokens so clients can
+  resume after a graceful restart, so the file is written `0600` and must live on
+  a non-public path (a mounted volume in prod, never a web-served directory).
 - **CSP.** The backend sets `default-src 'self'` with `script-src 'self'
   'unsafe-inline'`, `img-src 'self' data: blob:` (canvas dice textures + QR data
   URLs), and `connect-src 'self'` (same-origin WebSocket). Fonts are self-hosted

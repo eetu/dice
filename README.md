@@ -52,6 +52,23 @@ Requires Rust, Node (see `frontend/.node-version`), `just`, and `bacon`.
 | `DICE_WS_PER_IP`       | `24`           | Max concurrent WebSockets per IP                            |
 | `DICE_MAX_WS`          | `20000`        | Global cap on concurrent WebSockets                        |
 | `DICE_WS_MSGS_PER_SEC` | `20`           | Per-connection inbound message budget / sec (burst 2×)      |
+| `DICE_STATE_FILE`      | _(unset)_      | Path to persist games across a graceful restart — see below |
+
+### Surviving a restart (optional)
+
+By default a restart drops every game (in-memory, ephemeral). Set
+`DICE_STATE_FILE` to a writable path and, on a **graceful** shutdown
+(SIGTERM/SIGINT — what a deploy or reboot sends), the live games are flushed to
+that JSON file and reloaded (then the file is consumed) on the next boot;
+reconnecting clients re-authenticate with their stored token and resume. Notes:
+
+- **Graceful only** — a hard crash / OOM-kill / power loss loses everything
+  (there is no periodic checkpoint).
+- **The file holds secret player tokens** (that's what lets clients resume). It's
+  written `0600`; keep it on a non-public path. In a container the path must be a
+  mounted volume — the container filesystem is replaced on each deploy.
+- Version-tagged: a file written by an incompatible older build is discarded
+  (those games are lost) rather than mis-read.
 
 ### Abuse protection (public endpoint)
 

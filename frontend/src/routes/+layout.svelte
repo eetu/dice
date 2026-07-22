@@ -18,9 +18,11 @@
 
   let { children } = $props();
 
-  // A new build was deployed (SvelteKit's version poll flipped `updated`). Since a
-  // deploy restarts the backend and wipes the in-memory games, there's no live
-  // game to lose — hard-reload to pick up the new SPA (and matching protocol).
+  // A new build was deployed (SvelteKit's version poll flipped `updated`) —
+  // hard-reload to pick up the new SPA (and its matching protocol). If the
+  // backend persists games across the restart (DICE_STATE_FILE) the reload
+  // reconnects with the stored creds and resumes; otherwise the game was
+  // ephemeral and there was nothing to lose. Either way the reload is safe.
   $effect(() => {
     if (updated.current) location.reload();
   });

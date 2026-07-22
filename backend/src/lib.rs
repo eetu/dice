@@ -6,10 +6,12 @@
 mod config;
 mod error;
 mod guard;
+mod persist;
 mod room;
 mod routes;
 mod ws;
 
+use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,6 +41,14 @@ pub async fn run_server() -> anyhow::Result<()> {
     let cfg = Config::from_env()?;
     let guard = Arc::new(Guard::from_cfg(&cfg));
     let rooms = new_rooms();
+
+    // Optional persistence: reload games flushed by the previous (graceful)
+    // shutdown, then the file is consumed. Off unless DICE_STATE_FILE is set.
+    let state_file = cfg.state_file.clone();
+    if let Some(path) = state_file.as_deref() {
+        persist::load(&rooms, path);
+    }
+
     let state = AppState {
         cfg: Arc::new(cfg),
         rooms: rooms.clone(),
@@ -46,7 +56,7 @@ pub async fn run_server() -> anyhow::Result<()> {
     };
 
     let ttl = state.cfg.ttl;
-    tokio::spawn(reap_loop(rooms, ttl));
+    tokio::spawn(reap_loop(rooms.clone(), ttl));
     tokio::spawn(guard_sweep_loop(guard));
 
     let bind = state.cfg.bind.clone();
@@ -55,12 +65,54 @@ pub async fn run_server() -> anyhow::Result<()> {
     tracing::info!(%bind, "dice listening");
     // `ConnectInfo` gives handlers the TCP peer address — the client IP used by
     // the per-IP abuse guards when no trusted proxy is in front.
-    axum::serve(
+    let server = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .await?;
+    .into_future();
+
+    // Race the server against the shutdown signal. On SIGTERM/SIGINT we flush the
+    // live games (if persistence is on) and return immediately — dropping the
+    // server future closes the listener and open sockets. We flush BEFORE draining
+    // so a short SIGTERM→SIGKILL grace window can't truncate the write; clients
+    // reconnect and resume from the restored state on the next boot.
+    tokio::select! {
+        res = server => res?,
+        () = shutdown_signal() => match state_file.as_deref() {
+            Some(path) => {
+                tracing::info!("shutdown signal received — flushing game state");
+                persist::save(&rooms, path);
+            }
+            None => tracing::info!("shutdown signal received — ephemeral (no DICE_STATE_FILE)"),
+        },
+    }
     Ok(())
+}
+
+/// Resolve when the process is asked to stop: SIGINT (ctrl-c, dev) or SIGTERM
+/// (the signal an orchestrator sends on `stop` / a rolling deploy).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            // If we can't install the handler, never resolve on this branch —
+            // ctrl-c still works.
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {}
+        () = terminate => {}
+    }
 }
 
 /// Periodically drop idle per-IP rate-limit buckets so the guard maps stay

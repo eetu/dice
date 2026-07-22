@@ -1,12 +1,19 @@
 # backend — dice (Rust axum)
 
-In-memory game rooms + realtime WebSocket fan-out. No DB. See the root CLAUDE.md
-for the cross-cutting invariants (auth model, roll authority, token secrecy).
+In-memory game rooms + realtime WebSocket fan-out. No DB (games survive a
+graceful restart only if `DICE_STATE_FILE` is set — see `persist.rs`). See the
+root CLAUDE.md for the cross-cutting invariants (auth model, roll authority,
+token secrecy).
 
 ## Modules
 
-- `lib.rs` — boot flow (dotenv → tracing → `Config` → `AppState` → router →
-  serve) + the TTL `reap_loop`.
+- `lib.rs` — boot flow (dotenv → tracing → `Config` → optional `persist::load`
+  → `AppState` → router → serve, racing the serve against `shutdown_signal` to
+  flush on SIGTERM/SIGINT) + the TTL `reap_loop`.
+- `persist.rs` — opt-in `DICE_STATE_FILE` state file: `save` (flush live rooms,
+  atomic write, `0600`) + `load` (restore then consume). Version-tagged; a
+  mismatched/corrupt file is discarded. `Room::{to,from}_persisted` in `room.rs`
+  do the flatten/rebuild (the secret `token` IS persisted, unlike the wire type).
 - `config.rs` — `Config::from_env` (`DICE_BIND`, `STATIC_DIR`, `DICE_TTL_SECS`,
   `DICE_MAX`, room/player caps, and the abuse-guard knobs — see root CLAUDE.md).
   Public app → no `dev_auth`.

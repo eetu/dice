@@ -29,10 +29,17 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   front, else the TCP peer. Wrong setting = self-DoS (proxy, trust off) or
   forgeable limits (no proxy, trust on). Serving uses
   `into_make_service_with_connect_info::<SocketAddr>()` so handlers see the peer.
-- **In-memory + ephemeral.** No database. All game state lives in
+- **In-memory, ephemeral by default.** No database. All game state lives in
   `Arc<Mutex<HashMap<Code, Arc<Mutex<Room>>>>>`. A background reaper drops rooms
-  idle past `DICE_TTL_SECS` (default 2h); their code then 404s. A server restart
-  loses all games — by design.
+  idle past `DICE_TTL_SECS` (default 2h); their code then 404s. A hard crash
+  loses all games. **Optional graceful-restart persistence** (`backend/src/persist.rs`,
+  opt-in via `DICE_STATE_FILE`): on SIGTERM/SIGINT the rooms are flushed to one
+  JSON file and reloaded (then the file is consumed) on the next boot, so a
+  deploy/reboot resumes instead of dropping games. The client's WS auto-reconnect
+  + stored creds do the rest. **The file holds secret player tokens** (needed so a
+  reconnecting client re-authenticates) — written `0600`, must live on a
+  per-restart-persistent, non-public path. Flush is graceful-only (no periodic
+  checkpoint); a crash/OOM still drops everything.
 - **Server is the roll authority.** Only the current player may `roll`; the
   backend generates the face values with `rand` and broadcasts them. Each client
   animates its own physics tumble that settles to those values (no cross-client
@@ -75,7 +82,8 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   `/api`, `/status`, `/ws` → `:3040`). Open two browsers to test multiplayer.
 - Config (backend, via `backend/.env`): `DICE_BIND` (`0.0.0.0:3040`),
   `DICE_TTL_SECS` (7200, min 1), `DICE_MAX` (8), `DICE_MAX_ROOMS` (5000),
-  `DICE_MAX_PLAYERS` (16), `STATIC_DIR` (`./dist`, prod only). Caps bound memory
+  `DICE_MAX_PLAYERS` (16), `STATIC_DIR` (`./dist`, prod only), `DICE_STATE_FILE`
+  (unset → ephemeral; a path → persist games across a graceful restart). Caps bound memory
   on the public endpoint (`/api/games` → 503 when full, join → 409). Abuse
   guards: `DICE_TRUST_PROXY` (false), `DICE_RL_CREATE_PER_MIN` (10),
   `DICE_RL_JOIN_PER_MIN` (60), `DICE_WS_PER_IP` (24), `DICE_MAX_WS` (20000),

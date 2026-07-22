@@ -48,6 +48,16 @@ pub struct Config {
     /// broadcast amplification (one client message fans a snapshot to the whole
     /// room). `DICE_WS_MSGS_PER_SEC`, default 20.
     pub ws_msgs_per_sec: u32,
+    /// Optional path to persist live games across a graceful restart (deploy /
+    /// reboot). `DICE_STATE_FILE`, unset by default → fully ephemeral (a restart
+    /// drops every game, the original model). When set, the rooms are flushed to
+    /// this file on shutdown and reloaded (then the file is consumed) on the next
+    /// boot, so reconnecting clients resume. **The file contains secret player
+    /// tokens** — it is written `0600` and must live on a non-public,
+    /// per-restart-persistent path (a mounted volume in prod, since the container
+    /// filesystem is replaced on deploy). Does NOT survive a hard crash — only a
+    /// graceful SIGTERM/SIGINT shutdown flushes it.
+    pub state_file: Option<PathBuf>,
 }
 
 impl Config {
@@ -89,6 +99,12 @@ impl Config {
                 .filter(|&n| n >= 1)
                 .unwrap_or(20000),
             ws_msgs_per_sec: env_u32("DICE_WS_MSGS_PER_SEC", 20, 1),
+            // Blank/whitespace is treated as unset (ephemeral).
+            state_file: env::var("DICE_STATE_FILE")
+                .ok()
+                .map(|s| s.trim().to_owned())
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from),
         })
     }
 }
