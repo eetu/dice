@@ -12,7 +12,14 @@
   //    depth cue). It's driven off a window listener so it also responds to touch
   //    drags and never intercepts a tap (the layer stays pointer-events:none).
   // The per-cell shimmer is igyb's own (its wave already travels diagonally).
-  import { type GlyphEnv, glyphTile, type Palette } from "@anarkisti/igyb/core";
+  import {
+    type GlyphEnv,
+    glyphTile,
+    mix,
+    type Palette,
+    toRgb,
+    toRgbString,
+  } from "@anarkisti/igyb/core";
   import { tick } from "svelte";
 
   import { theme } from "$lib/stores/theme.svelte";
@@ -70,10 +77,16 @@
     const n = (i % 6) + 1; // the per-cell hash mixes faces across the field
     const s = size * 0.8;
     const o = -s / 2;
-    // Silver glint: brighten the outline toward `glintTo` near the pointer (squared
-    // to keep it tight) and thicken it a touch — a metallic catch of the light.
+    // Silver glint: brighten the outline from the base glyph colour (palette.fg)
+    // toward the glint accent near the pointer (squared to keep it tight) and
+    // thicken it a touch — a metallic catch of the light. Colours come off the
+    // per-cell env palette, so there's no module-level colour state to keep synced.
     const t = env.highlight * env.highlight;
-    ctx.strokeStyle = ctx.fillStyle = mix(glintFrom, glintTo, t);
+    ctx.strokeStyle = ctx.fillStyle = mix(
+      env.palette.fg,
+      env.palette.accent(0),
+      t,
+    );
     ctx.save();
     ctx.rotate((-TILT * Math.PI) / 180); // keep the die upright under the field tilt
     ctx.lineWidth = size * 0.035 * (1 + t * 0.5);
@@ -88,80 +101,67 @@
     ctx.restore();
   }
 
-  // Lighten a #rrggbb by a fixed per-channel amount → a subtle "raised" tint from
-  // any themed bg (near-white nudges to white; near-black lifts a touch).
-  function lighten(hex: string, add: number): string {
-    const n = Number.parseInt(hex.replace("#", ""), 16);
-    if (Number.isNaN(n)) return hex;
-    const c = (shift: number): number =>
-      Math.min(255, ((n >> shift) & 255) + add);
-    return `rgb(${c(16)}, ${c(8)}, ${c(0)})`;
+  // A subtle "raised" tint: lift each channel of the themed page bg by a flat
+  // amount so the die outlines read as gently embossed. (igyb's `lighten` mixes
+  // *toward white* — proportional — whereas dice wants a small flat lift that
+  // stays tiny on the light-grey body yet still shows on the near-black dark one;
+  // so keep this dice-specific helper, built on igyb's parse/format.)
+  function raise(color: string, add: number): string {
+    const [r, g, b] = toRgb(color);
+    return toRgbString([r + add, g + add, b + add]);
   }
 
-  // Silver-glint endpoints (base outline → glint peak), refreshed from the theme in
-  // palette(); drawDie mixes between them by the per-cell pointer highlight.
-  let glintFrom: [number, number, number] = [24, 24, 24];
-  let glintTo: [number, number, number] = [205, 214, 236];
-
-  function rgbTriplet(s: string): [number, number, number] {
-    const m = s.match(/\d+/g);
-    return m ? [Number(m[0]), Number(m[1]), Number(m[2])] : [24, 24, 24];
-  }
-  function mix(
-    a: [number, number, number],
-    b: [number, number, number],
-    t: number,
-  ): string {
-    const c = (i: number): number => Math.round(a[i] + (b[i] - a[i]) * t);
-    return `rgb(${c(0)}, ${c(1)}, ${c(2)})`;
-  }
-
+  // The palette, read live from the halo tokens. Passed to glyphTile as a *thunk*
+  // so `refresh()` (below) can re-invoke it on a theme flip and re-read the tokens
+  // in place, rather than tearing the background down.
   function palette(): Palette {
-    const s = getComputedStyle(document.documentElement);
-    // The real page background is --halo-body (light-grey in light, near-black in
-    // dark); draw the pattern one step lighter than it, in both themes.
-    const bg = s.getPropertyValue("--halo-body").trim() || "#111";
-    // lighten() only pushes toward white, so a single lift can't serve both
-    // themes: on the light-grey body a tiny nudge already reads, but on the
-    // near-black dark body the same nudge is invisible. Lift more in dark.
-    const glyph = lighten(bg, theme.resolved === "dark" ? 9 : 7);
-    glintFrom = rgbTriplet(glyph);
-    // Glint peak: cool silver in dark, plain white in light.
-    glintTo = theme.resolved === "dark" ? [205, 214, 236] : [255, 255, 255];
-    return { bg, fg: glyph, accents: [glyph] };
+    const bg =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--halo-body")
+        .trim() || "#111";
+    const dark = theme.resolved === "dark";
+    // Draw the pattern a touch lighter than the page bg — more lift in dark, where
+    // the near-black body would otherwise swallow a small nudge.
+    const glyph = raise(bg, dark ? 9 : 7);
+    // Glint peak the outline brightens toward under the pointer: cool silver in
+    // dark, plain white in light. Carried as the accent so drawDie reads it off env.
+    const glint = dark ? "rgb(205, 214, 236)" : "rgb(255, 255, 255)";
+    return { bg, fg: glyph, accents: [glint] };
   }
 
-  $effect(() => {
-    theme.resolved; // re-read palette when the light/dark theme flips
+  // Reference to the running background, shared with the theme-flip effect below.
+  let bg: ReturnType<typeof glyphTile> | undefined;
 
-    // Wait for the DOM to settle before reading the palette: the layout writes
-    // the new `data-theme` onto <html> in its own effect, and this effect can
-    // run first on a flip. Reading --halo-body before that write yields the
-    // *previous* theme's colour — the pattern would lag a step and look
-    // inverted. tick() defers the read until after data-theme lands.
-    let bg: ReturnType<typeof glyphTile> | undefined;
-    let cancelled = false;
-    void tick().then(() => {
-      if (cancelled) return;
-      // The glint follows the pointer — a mouse-hover delight. On touch the "pointer"
-      // is the finger, which sits right where you're tapping (dice, buttons), lighting
-      // up behind the controls. So gate it to fine pointers; touch keeps the calm
-      // static texture.
-      const fine = window.matchMedia("(pointer: fine)").matches;
-      bg = glyphTile(el, {
-        glyph: drawDie,
-        size: 76,
-        speed: 0.3,
-        interactive: fine,
-        pointerSource: "window", // canvas is pointer-events:none → track via window
-        theme: palette(),
-      });
-      bg.start();
+  // Create the tiled background once. A light/dark flip re-themes it in place (see
+  // the next effect) instead of destroying and recreating it.
+  $effect(() => {
+    // The glint follows the pointer — a mouse-hover delight. On touch the "pointer"
+    // is the finger, which sits right where you're tapping (dice, buttons), lighting
+    // up behind the controls. So gate it to fine pointers; touch keeps the calm
+    // static texture.
+    const fine = window.matchMedia("(pointer: fine)").matches;
+    bg = glyphTile(el, {
+      glyph: drawDie,
+      size: 76,
+      speed: 0.3,
+      interactive: fine,
+      pointerSource: "window", // canvas is pointer-events:none → track via window
+      theme: palette, // thunk: refresh() re-invokes it to re-read the tokens
     });
+    bg.start();
     return () => {
-      cancelled = true;
       bg?.destroy();
+      bg = undefined;
     };
+  });
+
+  // Re-theme in place when the light/dark theme flips. tick() defers the refresh
+  // until after the layout has written the new `data-theme` onto <html>, so the
+  // thunk re-reads the *current* --halo-body — not the previous theme's colour
+  // (which would make the pattern lag a step and look inverted).
+  $effect(() => {
+    theme.resolved;
+    void tick().then(() => bg?.refresh());
   });
 
   // Parallax: nudge the field a few px opposite the pointer. A window listener so
