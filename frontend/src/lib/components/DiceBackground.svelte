@@ -12,7 +12,7 @@
   //    depth cue). It's driven off a window listener so it also responds to touch
   //    drags and never intercepts a tap (the layer stays pointer-events:none).
   // The per-cell shimmer is igyb's own (its wave already travels diagonally).
-  import { glyphTile, type GlyphEnv, type Palette } from "@anarkisti/igyb/core";
+  import { type GlyphEnv, glyphTile, type Palette } from "@anarkisti/igyb/core";
   import { tick } from "svelte";
 
   import { theme } from "$lib/stores/theme.svelte";
