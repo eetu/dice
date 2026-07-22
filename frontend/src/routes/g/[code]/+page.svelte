@@ -531,9 +531,11 @@
     align-items: center;
     gap: 0.45rem;
     min-height: 44px;
-    padding: 0 0.4rem;
-    background: none;
-    border: none;
+    padding: 0 0.8rem;
+    /* Solid pill so the backdrop doesn't bleed through, matching .gear/.leave. */
+    background: var(--halo-bg-main);
+    border: 1px solid var(--halo-border);
+    border-radius: var(--halo-radius-pill);
     cursor: pointer;
     font-family: var(--halo-font-heading);
     font-weight: 600;
@@ -726,7 +728,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     /* Dark translucent pill so it stays legible on any felt (green/red/steel…). */
-    background: rgba(10, 10, 14, 0.5);
+    background: rgba(10, 10, 14, 0.72);
     color: #fff;
     border-radius: var(--halo-radius-pill);
     padding: 0.3em 0.85em;

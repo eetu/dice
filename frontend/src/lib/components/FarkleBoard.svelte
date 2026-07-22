@@ -274,6 +274,13 @@
     gap: 0.9rem;
     align-items: center;
     justify-content: center;
+    /* Soft page-colour scrim so the turn score + status prompt read over the
+       ambient backdrop; fades out so it never looks like a hard panel. */
+    background: radial-gradient(
+      120% 82% at 50% 50%,
+      var(--halo-body) 42%,
+      transparent 100%
+    );
   }
   .turnscore {
     margin: 0;

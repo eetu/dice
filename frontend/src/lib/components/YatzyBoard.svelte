@@ -501,6 +501,8 @@
     min-height: 0;
     overflow-y: auto;
     touch-action: pan-y; /* let horizontal drags be swipes, keep vertical scroll */
+    /* Solid so the ambient backdrop doesn't bleed through (matches the matrix .card). */
+    background: var(--halo-body);
   }
   .prow {
     display: flex;
@@ -762,10 +764,15 @@
     background: var(--halo-accent-soft);
   }
   .status {
-    margin: 0;
+    margin: 0 auto;
+    width: fit-content;
     text-align: center;
     font-size: 0.9rem;
     color: var(--halo-text-muted);
+    /* Scrim pill so the roll prompt reads over the backdrop. */
+    background: var(--halo-body);
+    padding: 0.2rem 0.7rem;
+    border-radius: var(--halo-radius-pill);
   }
   .status.mine {
     color: var(--halo-accent);

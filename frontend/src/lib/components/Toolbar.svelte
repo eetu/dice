@@ -78,7 +78,7 @@
     font-weight: 600;
   }
   .skip {
-    background: none;
+    background: var(--halo-bg-main);
     border: 1px solid var(--halo-border);
     color: var(--halo-text-muted);
     border-radius: var(--halo-radius);

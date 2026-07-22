@@ -337,8 +337,12 @@
     justify-content: center;
     flex-wrap: wrap;
     gap: 0.5rem;
-    padding: 0.5rem;
+    padding: 0.5rem 0.9rem;
     font-size: 1.1rem;
+    /* Solid surface (like .opp/.reveal) so the central bid state reads over the
+       backdrop. */
+    background: var(--halo-bg-light);
+    border-radius: var(--halo-radius);
   }
   .bidline .claim {
     font-weight: 700;
@@ -543,7 +547,8 @@
   }
   .actions .liar {
     flex: 0 0 auto;
-    background: none;
+    /* Solid fill so the backdrop doesn't show through the outlined danger button. */
+    background: var(--halo-bg-light);
     border: 2px solid var(--halo-error);
     color: var(--halo-error);
     border-radius: var(--halo-radius);
