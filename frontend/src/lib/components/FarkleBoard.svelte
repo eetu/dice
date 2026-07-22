@@ -357,10 +357,15 @@
     border-top: 1px solid var(--halo-border);
   }
   .status {
-    margin: 0;
+    margin: 0 auto;
+    width: fit-content;
     text-align: center;
     font-size: 0.9rem;
     color: var(--halo-text-muted);
+    /* Scrim pill so the prompt reads over the backdrop (.tray has no fill). */
+    background: var(--halo-body);
+    padding: 0.2rem 0.7rem;
+    border-radius: var(--halo-radius-pill);
   }
   .status.mine {
     color: var(--halo-accent);

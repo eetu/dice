@@ -563,7 +563,12 @@
   .waiting {
     text-align: center;
     color: var(--halo-text-muted);
-    margin: 0;
+    margin: 0 auto;
+    width: fit-content;
+    /* Scrim pill so the prompt reads over the backdrop. */
+    background: var(--halo-body);
+    padding: 0.2rem 0.7rem;
+    border-radius: var(--halo-radius-pill);
   }
 
   /* Winner — fills the board so the fireworks fill the background. */
