@@ -14,11 +14,13 @@
   type Props = {
     myId: string | null;
     onRoll: () => void;
+    onSelect: (keep: number[]) => void;
     onSetAside: (keep: number[]) => void;
     onBank: () => void;
     onNewMatch: () => void;
   };
-  let { myId, onRoll, onSetAside, onBank, onNewMatch }: Props = $props();
+  let { myId, onRoll, onSelect, onSetAside, onBank, onNewMatch }: Props =
+    $props();
 
   const CELLS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   const PIPS: Record<number, number[]> = {
@@ -44,9 +46,12 @@
   const isMyTurn = $derived(!!view && !!myId && view.currentPlayerId === myId);
   const canPick = $derived(!!view && isMyTurn && view.mustPick && !view.busted);
 
-  // Local selection (indices into the current dice). Cleared whenever the dice
-  // change (a new roll, or after setting aside).
-  let selected = $state<number[]>([]);
+  // The selection is server state, broadcast like Yatzy holds, so everyone sees
+  // which dice the current player is picking. Derive the indices from the view;
+  // the server clears it whenever the dice change (roll / set-aside / new turn).
+  const selected = $derived(
+    view ? view.selected.flatMap((on, i) => (on ? [i] : [])) : [],
+  );
   let rollAnim = $state(0);
   let prevHadDice = false;
   $effect(() => {
@@ -55,18 +60,17 @@
     if (has && !prevHadDice) {
       rollAnim++;
       diceAudio.roll();
-      selected = [];
-    } else if (!has) {
-      selected = [];
     }
     prevHadDice = has;
   });
 
   function toggle(i: number) {
     if (!canPick) return;
-    selected = selected.includes(i)
-      ? selected.filter((x) => x !== i)
-      : [...selected, i];
+    // Send the toggled selection; the highlight updates when the view echoes it
+    // back (server-authoritative, like Yatzy holds).
+    onSelect(
+      selected.includes(i) ? selected.filter((x) => x !== i) : [...selected, i],
+    );
   }
 
   const selScore = $derived(
@@ -155,7 +159,7 @@
                   >{/key}
               </button>
             {:else}
-              <span class="dietile static"
+              <span class="dietile static" class:sel={view.selected[i]}
                 >{#key rollAnim}<span class="dieanim tumble" style="--i:{i}"
                     >{@render face(f)}</span
                   >{/key}</span
@@ -164,10 +168,7 @@
           {/each}
         </div>
       {:else}
-        <p class="remaining">
-          {view.remaining}
-          {view.remaining === 1 ? "die" : "dice"}
-        </p>
+        <p class="remaining">{i18n.m.farkleRemaining(view.remaining)}</p>
       {/if}
     </div>
 

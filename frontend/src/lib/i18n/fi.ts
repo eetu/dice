@@ -180,6 +180,7 @@ export const fi: Catalog = {
   farkleBank: (n: number) => `Pankkiin ${n}`,
   farklePass: "Ohita",
   farkleThisTurn: (n: number) => `Tällä vuorolla: ${n}`,
+  farkleRemaining: (n: number) => `${n} ${n === 1 ? "noppa" : "noppaa"}`,
   farklePick: "Napauta pisteyttäviä noppia sivuun",
   farkleSetAside: (n: number) => `Sivuun +${n}`,
   farkleHotDice: "Kuumat nopat! Heitä kaikki kuusi uudelleen",

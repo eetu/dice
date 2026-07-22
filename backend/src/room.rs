@@ -258,6 +258,9 @@ pub struct FarkleView {
     pub target: u32,
     /// The dice just rolled, waiting to be set aside ([] if none in play).
     pub dice: Vec<u8>,
+    /// Per-die flag (aligned to `dice`) marking the current player's live
+    /// selection, so everyone sees which dice are being picked (like Yatzy holds).
+    pub selected: Vec<bool>,
     /// Points set aside this turn but not yet banked.
     pub turn_score: u32,
     /// Dice available to roll next (6 = a fresh hand / hot dice).
@@ -370,6 +373,11 @@ pub enum ClientMsg {
     },
     /// Farkle: roll the remaining dice (start of turn / after setting aside).
     FarkleRoll,
+    /// Farkle: update the live pre-commit selection (indices into the current
+    /// dice) — broadcast so everyone sees which dice are being picked.
+    FarkleSelect {
+        keep: Vec<usize>,
+    },
     /// Farkle: set aside a scoring selection (indices into the current dice),
     /// banking its points into the running turn score.
     FarkleSetAside {
@@ -691,6 +699,12 @@ pub(crate) struct FarkleState {
     must_pick: bool,
     /// The last roll scored nothing.
     busted: bool,
+    /// The current player's live pre-commit selection (indices into `dice`),
+    /// broadcast so everyone sees which dice are being picked — like Yatzy holds.
+    /// Transient UI state: not persisted (cleared on any restart) and cleared
+    /// whenever the dice change (roll / set-aside / new turn).
+    #[serde(skip)]
+    selected: Vec<usize>,
     winner: Option<String>,
     over: bool,
 }
@@ -708,6 +722,7 @@ impl FarkleState {
     /// Start a fresh turn for the current player.
     fn reset_turn(&mut self) {
         self.dice.clear();
+        self.selected.clear();
         self.turn_score = 0;
         self.remaining = 6;
         self.must_pick = false;
@@ -984,6 +999,7 @@ impl Room {
             ClientMsg::YatzyHold { index } => self.yatzy_hold(actor_id, index),
             ClientMsg::YatzyScore { category } => self.yatzy_score(actor_id, category),
             ClientMsg::FarkleRoll => self.farkle_roll(actor_id),
+            ClientMsg::FarkleSelect { keep } => self.farkle_select(actor_id, keep),
             ClientMsg::FarkleSetAside { keep } => self.farkle_set_aside(actor_id, keep),
             ClientMsg::FarkleBank => self.farkle_bank(actor_id),
             ClientMsg::Leave => self.remove_player(actor_id),
@@ -1591,6 +1607,7 @@ impl Room {
             remaining: 6,
             must_pick: false,
             busted: false,
+            selected: Vec::new(),
             winner: None,
             over: false,
         });
@@ -1612,6 +1629,7 @@ impl Room {
             }
             let n = g.remaining.clamp(1, 6);
             let dice: Vec<u8> = (0..n).map(|_| rng.random_range(1..=6)).collect();
+            g.selected.clear(); // fresh dice → no carry-over selection
             if farkle_has_score(&dice) {
                 g.dice = dice;
                 g.must_pick = true;
@@ -1656,7 +1674,36 @@ impl Room {
                 g.remaining - kept
             }; // hot dice → 6
             g.dice.clear();
+            g.selected.clear();
             g.must_pick = false;
+        }
+        self.broadcast_farkle();
+    }
+
+    /// Update the current player's live pre-commit selection (indices into the
+    /// current dice) so everyone sees which dice are being picked. Only the
+    /// current player, only mid-pick; invalid indices are ignored (deduped).
+    fn farkle_select(&mut self, actor: &str, keep: Vec<usize>) {
+        {
+            let Some(g) = self.farkle.as_mut() else {
+                return;
+            };
+            if g.over || g.busted || !g.must_pick {
+                return;
+            }
+            if g.order.get(g.turn).map(|s| s.as_str()) != Some(actor) {
+                return;
+            }
+            // Keep only valid, unique, in-range indices (order preserved).
+            let mut seen = HashSet::new();
+            let cleaned: Vec<usize> = keep
+                .into_iter()
+                .filter(|&i| i < g.dice.len() && seen.insert(i))
+                .collect();
+            if cleaned == g.selected {
+                return; // no change → don't fan out a redundant broadcast
+            }
+            g.selected = cleaned;
         }
         self.broadcast_farkle();
     }
@@ -1705,12 +1752,14 @@ impl Room {
                 score: g.score_of(id),
             })
             .collect();
+        let selected = (0..g.dice.len()).map(|i| g.selected.contains(&i)).collect();
         Some(FarkleView {
             order: g.order.clone(),
             current_player_id: g.current_id(),
             scores,
             target: g.target,
             dice: g.dice.clone(),
+            selected,
             turn_score: g.turn_score,
             remaining: g.remaining,
             must_pick: g.must_pick,
@@ -2495,6 +2544,28 @@ mod tests {
         let v = room.farkle_view().unwrap();
         assert_eq!(v.turn_score, 0);
         assert!(v.must_pick); // still waiting for a valid pick
+    }
+
+    #[test]
+    fn farkle_select_broadcasts_and_clears() {
+        let (mut room, id) = start_farkle_room(2);
+        room.apply(&id[0], ClientMsg::FarkleRoll);
+        set_farkle_dice(&mut room, vec![1, 1, 1, 2, 3, 4]);
+        // A non-current player can't drive the selection.
+        room.apply(&id[1], ClientMsg::FarkleSelect { keep: vec![0] });
+        assert!(room.farkle_view().unwrap().selected.iter().all(|&b| !b));
+        // The current player selects two 1s; an out-of-range index is filtered.
+        room.apply(
+            &id[0],
+            ClientMsg::FarkleSelect {
+                keep: vec![0, 1, 99],
+            },
+        );
+        let v = room.farkle_view().unwrap();
+        assert_eq!(v.selected, vec![true, true, false, false, false, false]);
+        // Setting aside those two 1s (200) clears the selection.
+        room.apply(&id[0], ClientMsg::FarkleSetAside { keep: vec![0, 1] });
+        assert!(room.farkle_view().unwrap().selected.is_empty());
     }
 
     #[test]

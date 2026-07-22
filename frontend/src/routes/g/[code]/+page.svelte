@@ -174,6 +174,9 @@
   function farkleRoll() {
     socket.send({ type: "farkleRoll" });
   }
+  function farkleSelect(keep: number[]) {
+    socket.send({ type: "farkleSelect", keep });
+  }
   function farkleSetAside(keep: number[]) {
     socket.send({ type: "farkleSetAside", keep });
   }
@@ -309,6 +312,7 @@
         <FarkleBoard
           {myId}
           onRoll={farkleRoll}
+          onSelect={farkleSelect}
           onSetAside={farkleSetAside}
           onBank={farkleBank}
           onNewMatch={() => setMode("farkle")}

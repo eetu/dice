@@ -139,6 +139,8 @@ export type FarkleView = {
   scores: FarkleScore[];
   target: number;
   dice: number[];
+  /** Per-die flag (aligned to `dice`) for the current player's live selection. */
+  selected: boolean[];
   turnScore: number;
   remaining: number;
   mustPick: boolean;
@@ -181,6 +183,7 @@ export type ClientMsg =
   | { type: "yatzyHold"; index: number }
   | { type: "yatzyScore"; category: YatzyCat }
   | { type: "farkleRoll" }
+  | { type: "farkleSelect"; keep: number[] }
   | { type: "farkleSetAside"; keep: number[] }
   | { type: "farkleBank" }
   | { type: "leave" };

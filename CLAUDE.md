@@ -67,8 +67,8 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   `presence` / `liarsChanged`(internal) / `liars` / `yatzy` / `farkle`;
   client→server `roll` / `reorder` / `setDiceCount` / `setName` / `setDiceTheme` /
   `setDeck` / `skipTurn` / `setMode` / `bid` / `callLiar` / `nextRound` /
-  `yatzyRoll` / `yatzyHold` / `yatzyScore` / `farkleRoll` / `farkleSetAside` /
-  `farkleBank` / `leave`. Liar's dice are hidden — the server broadcasts a
+  `yatzyRoll` / `yatzyHold` / `yatzyScore` / `farkleRoll` / `farkleSelect` /
+  `farkleSetAside` / `farkleBank` / `leave`. Liar's dice are hidden — the server broadcasts a
   `liarsChanged` ping and each socket rebuilds its own `liars` view; Yatzy + Farkle
   are public so their views broadcast verbatim. All fields camelCase; TS mirror in
   `frontend/src/lib/api.ts` — keep the two in sync by hand (no codegen).

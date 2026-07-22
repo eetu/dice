@@ -177,6 +177,7 @@ export const en = {
   farkleBank: (n: number) => `Bank ${n}`,
   farklePass: "Pass",
   farkleThisTurn: (n: number) => `This turn: ${n}`,
+  farkleRemaining: (n: number) => `${n} ${n === 1 ? "die" : "dice"}`,
   farklePick: "Tap scoring dice to set aside",
   farkleSetAside: (n: number) => `Set aside +${n}`,
   farkleHotDice: "Hot dice! Roll all six again",
