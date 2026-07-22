@@ -12,6 +12,7 @@
   import "$lib/styles/halo.css";
 
   import { updated } from "$app/state";
+  import DiceBackground from "$lib/components/DiceBackground.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { theme, watchSystemTheme } from "$lib/stores/theme.svelte";
 
@@ -36,4 +37,14 @@
   });
 </script>
 
-{@render children()}
+<!-- Ambient die-face backdrop on every route; content sits above it. -->
+<DiceBackground opacity={0.8} />
+
+<div class="bg-content">{@render children()}</div>
+
+<style>
+  .bg-content {
+    position: relative;
+    z-index: 1;
+  }
+</style>

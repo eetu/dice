@@ -88,8 +88,9 @@
       s.getPropertyValue(v).trim() || fallback;
     return {
       bg: get("--halo-bg-main", "#111"),
-      fg: get("--halo-text-muted", "#888"),
-      accents: [get("--halo-text-muted", "#888")],
+      // A hair lighter than the bg (subtle embossed texture, not dark outlines).
+      fg: get("--halo-text-light", "#e9e9e9"),
+      accents: [get("--halo-text-light", "#e9e9e9")],
     };
   }
 

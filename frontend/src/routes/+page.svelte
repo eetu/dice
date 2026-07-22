@@ -2,7 +2,6 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { api, ApiError, type Mode } from "$lib/api";
-  import DiceBackground from "$lib/components/DiceBackground.svelte";
   import LangToggle from "$lib/components/LangToggle.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import Wordmark from "$lib/components/Wordmark.svelte";
@@ -62,8 +61,6 @@
     }
   }
 </script>
-
-<DiceBackground />
 
 <div class="page">
   <main class="lobby halo-card">
@@ -144,16 +141,12 @@
     padding: 1.5rem;
   }
   .prefs {
-    position: relative;
-    z-index: 1;
     width: min(24rem, 100%);
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
   }
   .lobby {
-    position: relative;
-    z-index: 1;
     width: min(24rem, 100%);
     display: flex;
     flex-direction: column;
