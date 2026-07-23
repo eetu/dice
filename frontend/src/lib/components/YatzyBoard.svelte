@@ -310,9 +310,9 @@
   {#if t.bonus > 0}
     <span class="pv sum">{t.bonus}</span>
   {:else if upperOpen(pid)}
-    <!-- Progress toward the +50 (at 63), not a score — legible without a hover. -->
+    <!-- Points still needed for the +50 (at 63), stated in full (paged has room). -->
     <span class="pv togo" title={i18n.m.yatzyToGo(63 - t.upper)}
-      >{t.upper}/63</span
+      >{i18n.m.yatzyToGo(63 - t.upper)}</span
     >
   {:else}
     <span class="pv zero">0</span>
@@ -423,10 +423,10 @@
                 {#if t.bonus > 0}
                   <td class="val sum">{t.bonus}</td>
                 {:else if upperOpen(pid)}
-                  <!-- Progress toward the +50 (at 63), not a score: "45/63" reads
-                    as progress on mobile where the "to go" tooltip can't. -->
+                  <!-- Points still needed for the +50 (at 63), shown directly; the
+                    ↓ marks it as "to go" so it can't read as a score (no hover). -->
                   <td class="val togo" title={i18n.m.yatzyToGo(63 - t.upper)}
-                    >{t.upper}/63</td
+                    >↓{63 - t.upper}</td
                   >
                 {:else}
                   <td class="val zero">0</td>
