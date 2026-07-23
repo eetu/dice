@@ -146,6 +146,8 @@
       speed: 0.3,
       interactive: fine,
       pointerSource: "window", // canvas is pointer-events:none → track via window
+      pointerSmoothing: 0.15, // ease the glint so it glides, not snaps
+      themeTransition: 0.3, // crossfade the palette on a light/dark flip (via refresh)
       theme: palette, // thunk: refresh() re-invokes it to re-read the tokens
     });
     bg.start();

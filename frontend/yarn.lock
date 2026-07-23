@@ -30,15 +30,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anarkisti/igyb@npm:^0.4.0":
-  version: 0.4.0
-  resolution: "@anarkisti/igyb@npm:0.4.0"
+"@anarkisti/igyb@npm:^0.5.0":
+  version: 0.5.0
+  resolution: "@anarkisti/igyb@npm:0.5.0"
   peerDependencies:
     svelte: ^5
   peerDependenciesMeta:
     svelte:
       optional: true
-  checksum: 10/4e737e01f3d106ace26dc9739a6b13ed18c09d8c3585a055cfb858e948d705c6a612fa0db348c17aa8cec539dd2e49c292ef130b756495a20e2efe6d07b91d2a
+  checksum: 10/f3db38acfe33ac4d43a076a5ddc1a409abeedcd0e0ddcc1f01be50be65c6d129dda6f013e3d156bc39a7fa48b11120fe73af5054b276a9dcb941375efe1f266c
   languageName: node
   linkType: hard
 
@@ -1286,7 +1286,7 @@ __metadata:
   resolution: "dice-frontend@workspace:."
   dependencies:
     "@anarkisti/eslint-config": "npm:^1.1.0"
-    "@anarkisti/igyb": "npm:^0.4.0"
+    "@anarkisti/igyb": "npm:^0.5.0"
     "@fontsource/inter": "npm:^5"
     "@fontsource/space-grotesk": "npm:^5"
     "@glowbox/nixie": "npm:^1.1.0"
