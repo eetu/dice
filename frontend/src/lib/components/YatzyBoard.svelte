@@ -4,9 +4,10 @@
   // intent via callbacks. Dice are the tap targets themselves (no button chrome):
   // tap a die to hold it between rolls; tap a scorecard box to score there.
   import Trophy from "@lucide/svelte/icons/trophy";
+  import { tick } from "svelte";
   import { fade } from "svelte/transition";
 
-  import type { YatzyCat } from "$lib/api";
+  import type { YatzyCat, YatzyView } from "$lib/api";
   import Fireworks from "$lib/components/Fireworks.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
@@ -85,6 +86,47 @@
     return n.slice(0, Math.max(1, max - 1)) + "…";
   }
 
+  // Spotlight a big open combo (yatzy / straight / full house) the moment it's
+  // rolled, so the current player doesn't miss it below the fold on mobile:
+  // scroll its scorecard row into view + briefly pulse its preview. Only on the
+  // roller's own screen (they're the one deciding).
+  let root = $state<HTMLDivElement>();
+  let pulseCat = $state<YatzyCat | null>(null);
+  const NOTABLE: YatzyCat[] = [
+    "yatzy",
+    "largeStraight",
+    "smallStraight",
+    "fullHouse",
+  ];
+  function notableOpen(v: YatzyView): YatzyCat | null {
+    const card = v.cards.find((c) => c.playerId === v.currentPlayerId);
+    let best: { cat: YatzyCat; val: number } | null = null;
+    for (const cat of NOTABLE) {
+      if (card?.cells.some((x) => x.category === cat)) continue; // already used
+      const val = v.preview.find((c) => c.category === cat)?.value ?? 0;
+      if (val > 0 && (!best || val > best.val)) best = { cat, val };
+    }
+    return best?.cat ?? null;
+  }
+  function spotlight(v: YatzyView) {
+    if (!myId || v.currentPlayerId !== myId) return; // roller's screen only
+    const cat = notableOpen(v);
+    if (!cat) return;
+    pulseCat = cat;
+    void tick().then(() => {
+      const reduce = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      root?.querySelector(`[data-cat="${cat}"]`)?.scrollIntoView({
+        block: "center",
+        behavior: reduce ? "auto" : "smooth",
+      });
+    });
+    setTimeout(() => {
+      if (pulseCat === cat) pulseCat = null;
+    }, 1400);
+  }
+
   // A roll just happened when the roll count drops — retrigger the tumble
   // animation and play the roll sound (everyone at the table hears it).
   let rollAnim = $state(0);
@@ -98,6 +140,7 @@
     if (v.rolled && prevRollsLeft !== -1 && v.rollsLeft < prevRollsLeft) {
       rollAnim++;
       diceAudio.roll();
+      spotlight(v);
     }
     prevRollsLeft = v.rollsLeft;
   });
@@ -226,7 +269,11 @@
     <td class="val" class:zero={filled === 0}>{filled}</td>
   {:else if pid === view?.currentPlayerId && canScore}
     <td class="open">
-      <button class="score" onclick={() => onScore(cat)}>
+      <button
+        class="score"
+        class:pulse={cat === pulseCat}
+        onclick={() => onScore(cat)}
+      >
         {previewOf(cat)}
       </button>
     </td>
@@ -241,7 +288,10 @@
   {#if filled !== undefined}
     <span class="pv" class:zero={filled === 0}>{filled}</span>
   {:else if pid === view?.currentPlayerId && canScore}
-    <button class="pscore" onclick={() => onScore(cat)}>{previewOf(cat)}</button
+    <button
+      class="pscore"
+      class:pulse={cat === pulseCat}
+      onclick={() => onScore(cat)}>{previewOf(cat)}</button
     >
   {:else}
     <span class="pv dash">–</span>
@@ -249,7 +299,7 @@
 {/snippet}
 
 {#snippet prow(cat: YatzyCat)}
-  <div class="prow">
+  <div class="prow" data-cat={cat}>
     <span class="plabel">{i18n.m.yatzyCats[cat]}</span>
     {@render pval(focusId, cat)}
   </div>
@@ -260,15 +310,16 @@
   {#if t.bonus > 0}
     <span class="pv sum">{t.bonus}</span>
   {:else if upperOpen(pid)}
+    <!-- Progress toward the +50 (at 63), not a score — legible without a hover. -->
     <span class="pv togo" title={i18n.m.yatzyToGo(63 - t.upper)}
-      >{63 - t.upper}</span
+      >{t.upper}/63</span
     >
   {:else}
     <span class="pv zero">0</span>
   {/if}
 {/snippet}
 
-<div class="yatzy">
+<div class="yatzy" bind:this={root}>
   {#if !view}
     <p class="muted">{i18n.m.dealing}</p>
   {:else if view.over}
@@ -352,7 +403,7 @@
           </thead>
           <tbody>
             {#each UPPER as cat (cat)}
-              <tr>
+              <tr data-cat={cat}>
                 <th class="cat">{i18n.m.yatzyCats[cat]}</th>
                 {#each view.order as pid (pid)}{@render cell(pid, cat)}{/each}
               </tr>
@@ -372,8 +423,10 @@
                 {#if t.bonus > 0}
                   <td class="val sum">{t.bonus}</td>
                 {:else if upperOpen(pid)}
+                  <!-- Progress toward the +50 (at 63), not a score: "45/63" reads
+                    as progress on mobile where the "to go" tooltip can't. -->
                   <td class="val togo" title={i18n.m.yatzyToGo(63 - t.upper)}
-                    >{63 - t.upper}</td
+                    >{t.upper}/63</td
                   >
                 {:else}
                   <td class="val zero">0</td>
@@ -381,7 +434,7 @@
               {/each}
             </tr>
             {#each LOWER as cat (cat)}
-              <tr>
+              <tr data-cat={cat}>
                 <th class="cat">{i18n.m.yatzyCats[cat]}</th>
                 {#each view.order as pid (pid)}{@render cell(pid, cat)}{/each}
               </tr>
@@ -693,6 +746,25 @@
   .score:hover {
     background: var(--halo-accent);
     color: var(--halo-on-accent);
+  }
+  /* Spotlight pulse when a big combo (yatzy/straight/full house) is rolled — a
+     ring that expands and fades once, drawing the eye to the scrolled-in row. */
+  @media (prefers-reduced-motion: no-preference) {
+    .score.pulse,
+    .pscore.pulse {
+      animation: catpulse 1.3s ease-out;
+    }
+  }
+  @keyframes catpulse {
+    0% {
+      box-shadow: 0 0 0 0 var(--halo-accent);
+    }
+    40% {
+      box-shadow: 0 0 0 6px var(--halo-accent-soft);
+    }
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
   }
 
   /* Dice tray — a footer pinned below the scrolling scorecard so the dice + roll
