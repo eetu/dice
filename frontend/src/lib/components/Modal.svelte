@@ -14,8 +14,17 @@
     /** On phones, fill the whole viewport (edge to edge) instead of the default
      *  bottom sheet — for content-heavy panels like the game rules. */
     fullscreen?: boolean;
+    /** Wider on desktop — for side-by-side content like the invite QR + code. */
+    wide?: boolean;
   };
-  let { open, label, onClose, children, fullscreen = false }: Props = $props();
+  let {
+    open,
+    label,
+    onClose,
+    children,
+    fullscreen = false,
+    wide = false,
+  }: Props = $props();
 
   let dialog = $state<HTMLDialogElement>();
 
@@ -36,6 +45,7 @@
 <dialog
   bind:this={dialog}
   class:full={fullscreen}
+  class:wide
   tabindex="-1"
   aria-label={label}
   onclose={onClose}
@@ -103,6 +113,16 @@
   }
   .x:hover {
     color: var(--halo-text-main);
+  }
+  /* Desktop only — a roomier width for side-by-side content (invite QR + code).
+     Scoped to min-width so it never overrides the mobile bottom sheet below. */
+  @media (min-width: 641px) {
+    dialog.wide {
+      width: min(32rem, calc(100vw - 2rem));
+    }
+    dialog.wide .body {
+      padding: 1.5rem;
+    }
   }
   @media (max-width: 640px) {
     /* Bottom sheet: full-width, pinned to the bottom edge, height driven by its

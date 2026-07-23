@@ -62,7 +62,7 @@
 <style>
   .share {
     display: flex;
-    gap: 1.25rem;
+    gap: 1.75rem;
     align-items: center;
   }
   .qr {

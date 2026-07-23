@@ -488,6 +488,7 @@
 
   <Modal
     open={showShareModal}
+    wide
     label={i18n.m.invite}
     onClose={() => (showShareModal = false)}
   >
@@ -576,13 +577,50 @@
     filter: brightness(1.1);
   }
   .status {
-    width: 9px;
-    height: 9px;
+    position: relative;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
+    flex: none;
     background: var(--halo-disconnected);
+    transition: background var(--halo-d-fast);
   }
   .status.connected {
     background: var(--halo-connected);
+    /* Soft halo so the "live" dot glows rather than sitting flat. */
+    box-shadow: 0 0 6px
+      color-mix(in srgb, var(--halo-connected) 65%, transparent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    /* A slow "ping" ring emanating from the connected dot — a quiet heartbeat. */
+    .status.connected::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: var(--halo-connected);
+      animation: statusPing 2.6s ease-out infinite;
+    }
+    /* Reconnecting — a gentle blink on the disconnected dot. */
+    .status:not(.connected) {
+      animation: statusBlink 1.3s ease-in-out infinite;
+    }
+  }
+  @keyframes statusPing {
+    0% {
+      transform: scale(1);
+      opacity: 0.5;
+    }
+    70%,
+    100% {
+      transform: scale(2.6);
+      opacity: 0;
+    }
+  }
+  @keyframes statusBlink {
+    50% {
+      opacity: 0.4;
+    }
   }
   .leave {
     background: var(--halo-bg-main);
