@@ -100,7 +100,7 @@ export const fi: Catalog = {
   qrAlt: "QR-koodi peliin liittymiseen",
 
   // Modal
-  closeSettings: "Sulje asetukset",
+  close: "Sulje",
 
   // Liar's Dice
   dealing: "Jaetaan…",
@@ -181,6 +181,19 @@ export const fi: Catalog = {
   farklePass: "Ohita",
   farkleThisTurn: (n: number) => `Tällä vuorolla: ${n}`,
   farkleRemaining: (n: number) => `${n} ${n === 1 ? "noppa" : "noppaa"}`,
+  // Sääntöpaneeli (laudan ?-käännös)
+  farkleRules: "Säännöt",
+  farkleRulesScoring: "Pisteytys",
+  farkleRulesThreeKind: "Kolme samaa",
+  farkleRuleLadder: "×2 / ×4 / ×8 = kolmikon pisteet kerrottuna",
+  farkleRuleName: {
+    fourKind: "Neljä samaa",
+    fiveKind: "Viisi samaa",
+    sixKind: "Kuusi samaa",
+    straight: "Suora 1–6",
+    threePairs: "Kolme paria",
+    twoTriplets: "Kaksi kolmikkoa",
+  },
   farklePick: "Napauta pisteyttäviä noppia sivuun",
   farkleSetAside: (n: number) => `Sivuun +${n}`,
   farkleHotDice: "Kuumat nopat! Heitä kaikki kuusi uudelleen",

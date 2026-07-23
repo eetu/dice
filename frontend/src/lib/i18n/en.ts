@@ -99,7 +99,7 @@ export const en = {
   qrAlt: "QR code to join this game",
 
   // Modal
-  closeSettings: "Close settings",
+  close: "Close",
 
   // Liar's Dice
   dealing: "Dealing…",
@@ -178,6 +178,19 @@ export const en = {
   farklePass: "Pass",
   farkleThisTurn: (n: number) => `This turn: ${n}`,
   farkleRemaining: (n: number) => `${n} ${n === 1 ? "die" : "dice"}`,
+  // Rules panel (the ? flip on the board)
+  farkleRules: "Rules",
+  farkleRulesScoring: "Scoring",
+  farkleRulesThreeKind: "Three of a kind",
+  farkleRuleLadder: "×2 / ×4 / ×8 = that many times the three-of-a-kind score",
+  farkleRuleName: {
+    fourKind: "Four of a kind",
+    fiveKind: "Five of a kind",
+    sixKind: "Six of a kind",
+    straight: "Run 1–6",
+    threePairs: "Three pairs",
+    twoTriplets: "Two triplets",
+  },
   farklePick: "Tap scoring dice to set aside",
   farkleSetAside: (n: number) => `Set aside +${n}`,
   farkleHotDice: "Hot dice! Roll all six again",

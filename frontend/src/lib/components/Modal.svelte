@@ -11,8 +11,11 @@
     label: string;
     onClose: () => void;
     children: Snippet;
+    /** On phones, fill the whole viewport (edge to edge) instead of the default
+     *  bottom sheet — for content-heavy panels like the game rules. */
+    fullscreen?: boolean;
   };
-  let { open, label, onClose, children }: Props = $props();
+  let { open, label, onClose, children, fullscreen = false }: Props = $props();
 
   let dialog = $state<HTMLDialogElement>();
 
@@ -32,6 +35,7 @@
 
 <dialog
   bind:this={dialog}
+  class:full={fullscreen}
   tabindex="-1"
   aria-label={label}
   onclose={onClose}
@@ -42,7 +46,7 @@
   <div class="body">
     <header class="mhead">
       <h3>{label}</h3>
-      <button class="x" aria-label={i18n.m.closeSettings} onclick={onClose}>
+      <button class="x" aria-label={i18n.m.close} onclick={onClose}>
         <X size={18} />
       </button>
     </header>
@@ -114,6 +118,20 @@
     }
     .body {
       padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+    }
+    /* Fullscreen variant: fill the viewport edge to edge (content-heavy panels
+       like the rules), honouring the safe-area insets. */
+    dialog.full {
+      inset: 0;
+      height: 100dvh;
+      max-height: none;
+      border-radius: 0;
+    }
+    dialog.full .body {
+      min-height: 100%;
+      padding-top: max(1.25rem, env(safe-area-inset-top));
+      padding-right: max(1.25rem, env(safe-area-inset-right));
+      padding-left: max(1.25rem, env(safe-area-inset-left));
     }
   }
 </style>

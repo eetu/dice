@@ -4,7 +4,9 @@
   // scroll. Tap scoring dice to set them aside, then bank or push your luck.
   import Trophy from "@lucide/svelte/icons/trophy";
 
+  import FarkleRules from "$lib/components/FarkleRules.svelte";
   import Fireworks from "$lib/components/Fireworks.svelte";
+  import Modal from "$lib/components/Modal.svelte";
   import { scoreSelection } from "$lib/games/farkle";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
@@ -53,6 +55,7 @@
     view ? view.selected.flatMap((on, i) => (on ? [i] : [])) : [],
   );
   let rollAnim = $state(0);
+  let showRules = $state(false); // flip the board to the scoring cheat sheet
   let prevHadDice = false;
   $effect(() => {
     const v = farkle.view;
@@ -205,11 +208,30 @@
         </div>
       {/if}
     </div>
+
+    <!-- The ? opens the scoring cheat sheet as a modal (fullscreen on phones for
+      the two-column table; native <dialog> so it isn't clipped by the board). -->
+    <button
+      class="rules-btn"
+      onclick={() => (showRules = true)}
+      aria-label={i18n.m.farkleRules}
+      title={i18n.m.farkleRules}>?</button
+    >
   {/if}
+
+  <Modal
+    open={showRules}
+    fullscreen
+    label={i18n.m.farkleRules}
+    onClose={() => (showRules = false)}
+  >
+    {#if view}<FarkleRules target={view.target} />{/if}
+  </Modal>
 </div>
 
 <style>
   .farkle {
+    position: relative;
     height: 100%;
     min-height: 0;
     display: flex;
@@ -401,6 +423,31 @@
   .actions .ghost:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+
+  /* The ? sits in the top-right corner of the board and opens the rules modal. */
+  .rules-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    background: var(--halo-bg-main);
+    color: var(--halo-text-muted);
+    border: 1px solid var(--halo-border);
+    border-radius: 50%;
+    font-family: var(--halo-font-heading);
+    font-weight: 700;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+  .rules-btn:hover {
+    color: var(--halo-accent);
+    border-color: var(--halo-accent);
   }
 
   /* Winner — fills the board so the fireworks fill the background. */
