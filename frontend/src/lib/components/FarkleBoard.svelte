@@ -7,6 +7,7 @@
   import FarkleRules from "$lib/components/FarkleRules.svelte";
   import Fireworks from "$lib/components/Fireworks.svelte";
   import Modal from "$lib/components/Modal.svelte";
+  import WinnerGlow from "$lib/components/WinnerGlow.svelte";
   import { scoreSelection } from "$lib/games/farkle";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
@@ -115,6 +116,7 @@
     <p class="muted">{i18n.m.dealing}</p>
   {:else if view.over}
     <div class="over">
+      <WinnerGlow />
       <Fireworks />
       <div class="over-content">
         <p class="crown"><Trophy size={44} /></p>

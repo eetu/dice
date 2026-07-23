@@ -9,6 +9,7 @@
 
   import type { YatzyCat, YatzyView } from "$lib/api";
   import Fireworks from "$lib/components/Fireworks.svelte";
+  import WinnerGlow from "$lib/components/WinnerGlow.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
   import { game } from "$lib/stores/game.svelte";
@@ -324,6 +325,7 @@
     <p class="muted">{i18n.m.dealing}</p>
   {:else if view.over}
     <div class="over">
+      <WinnerGlow />
       <Fireworks />
       <div class="over-content">
         <p class="crown"><Trophy size={44} /></p>
@@ -785,6 +787,15 @@
     justify-content: center;
     flex-wrap: wrap;
     perspective: 700px; /* gives the roll tumble real depth */
+    /* Soft body scrim so the dice sit on a calm base — on desktop the backdrop's
+       pointer-glint would otherwise read busy right behind the (dark, thin-edged)
+       tiles. Fades out so it never looks like a boxed panel (matches the felt). */
+    padding: 0.6rem 1.2rem;
+    background: radial-gradient(
+      100% 115% at 50% 50%,
+      var(--halo-body) 55%,
+      transparent 100%
+    );
   }
   .dieanim {
     display: inline-flex;

@@ -5,6 +5,7 @@
   import Trophy from "@lucide/svelte/icons/trophy";
 
   import Fireworks from "$lib/components/Fireworks.svelte";
+  import WinnerGlow from "$lib/components/WinnerGlow.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
   import { game } from "$lib/stores/game.svelte";
@@ -122,6 +123,7 @@
     <p class="muted">{i18n.m.dealing}</p>
   {:else if view.phase === "over"}
     <div class="over">
+      <WinnerGlow />
       <Fireworks />
       <div class="over-content">
         <p class="crown"><Trophy size={44} /></p>

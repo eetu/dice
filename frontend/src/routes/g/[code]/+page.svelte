@@ -51,6 +51,18 @@
   const isMyTurn = $derived(!!myId && snap?.currentPlayerId === myId);
   const currentOffline = $derived(!!currentPlayer && !currentPlayer.connected);
   const mode = $derived(snap?.mode ?? "free");
+  // A game reached its win screen — fill the viewport so the winner content
+  // centers (the boarded layout gives a definite height; free-mode liars would
+  // otherwise leave the .over as a short top band on mobile).
+  const isOver = $derived(
+    mode === "liars"
+      ? liars.view?.phase === "over"
+      : mode === "yatzy"
+        ? !!yatzy.view?.over
+        : mode === "farkle"
+          ? !!farkle.view?.over
+          : false,
+  );
   // Options with translated labels for the Select dropdowns.
   const themeOptions = $derived(
     THEMES.map((t) => ({
@@ -204,7 +216,10 @@
   }
 </script>
 
-<div class="page" class:boarded={mode === "yatzy" || mode === "farkle"}>
+<div
+  class="page"
+  class:boarded={mode === "yatzy" || mode === "farkle" || isOver}
+>
   <header>
     <div class="hleft">
       <a class="home" href={resolve("/")} onclick={() => socket.disconnect()}
