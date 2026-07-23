@@ -4,5 +4,5 @@
 </script>
 
 <span class="halo-wordmark" style="font-size: {size}"
-  >di<span class="accent">ce</span></span
+  >dice<span class="accent">.</span></span
 >
