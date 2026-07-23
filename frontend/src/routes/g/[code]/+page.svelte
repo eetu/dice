@@ -501,7 +501,13 @@
     height: 100dvh;
     display: flex;
     flex-direction: column;
-    padding: 1rem;
+    /* Inset the top/sides by the safe-area (iOS PWA runs edge-to-edge under the
+       notch/status bar via viewport-fit=cover + black-translucent), so the header
+       clears the notch. Bottom stays base — the boarded trays add their own
+       home-indicator inset, and doubling it would float the controls too high. */
+    padding: max(1rem, env(safe-area-inset-top))
+      max(1rem, env(safe-area-inset-right)) 1rem
+      max(1rem, env(safe-area-inset-left));
     max-width: 1100px;
     margin: 0 auto;
   }
@@ -827,8 +833,11 @@
     .page {
       height: auto;
       min-height: 100dvh;
-      /* Tighter gutters on a phone — more room for the felt / scorecard. */
-      padding: 0.6rem;
+      /* Tighter gutters on a phone — more room for the felt / scorecard — but
+         still clear the notch/status bar on the top + sides. */
+      padding: max(0.6rem, env(safe-area-inset-top))
+        max(0.6rem, env(safe-area-inset-right)) 0.6rem
+        max(0.6rem, env(safe-area-inset-left));
     }
     header {
       margin-bottom: 0.6rem;

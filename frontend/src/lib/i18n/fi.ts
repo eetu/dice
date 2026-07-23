@@ -11,6 +11,12 @@ export const fi: Catalog = {
   orJoin: "tai liity peliin",
   codePlaceholder: "KOODI",
   join: "Liity",
+  scan: "Skannaa QR-koodi",
+  scanTitle: "Skannaa QR-koodi",
+  scanHint: "Osoita pelin QR-koodia",
+  scanInvalid: "Tämä ei ole dice-pelin koodi",
+  scanDenied: "Kameran käyttö estetty — salli se asetuksista",
+  scanNoCam: "Kameraa ei löytynyt",
   joinPromptTitle: "Valitse nimi liittyäksesi",
   errCreate: "Pelin luonti epäonnistui — onko palvelin käynnissä?",
   errNoGame: (code: string) =>

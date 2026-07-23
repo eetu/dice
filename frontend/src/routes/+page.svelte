@@ -1,8 +1,13 @@
 <script lang="ts">
+  import Camera from "@lucide/svelte/icons/camera";
+
+  import { browser } from "$app/environment";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { api, ApiError, type Mode } from "$lib/api";
   import LangToggle from "$lib/components/LangToggle.svelte";
+  import Modal from "$lib/components/Modal.svelte";
+  import QrScanner from "$lib/components/QrScanner.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import Wordmark from "$lib/components/Wordmark.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
@@ -13,6 +18,9 @@
   let mode = $state<Mode>("free"); // which game to start when creating
   let busy = $state(false);
   let error = $state("");
+  // In-app QR scanning (join by camera) — only where the device exposes one.
+  const canScan = browser && !!navigator.mediaDevices?.getUserMedia;
+  let showScanner = $state(false);
 
   const GAMES: { mode: Mode; label: () => string }[] = [
     { mode: "free", label: () => i18n.m.freeDice },
@@ -39,8 +47,14 @@
     }
   }
 
-  async function join() {
-    const code = joinCode.trim().toUpperCase();
+  function onScanned(code: string) {
+    showScanner = false;
+    joinCode = code;
+    join(code);
+  }
+
+  async function join(scanned?: string) {
+    const code = (scanned ?? joinCode).trim().toUpperCase();
     if (busy || !code) return;
     busy = true;
     error = "";
@@ -107,6 +121,17 @@
         join();
       }}
     >
+      {#if canScan}
+        <button
+          type="button"
+          class="scan"
+          onclick={() => (showScanner = true)}
+          aria-label={i18n.m.scan}
+          title={i18n.m.scan}
+        >
+          <Camera size={20} />
+        </button>
+      {/if}
       <input
         bind:value={joinCode}
         placeholder={i18n.m.codePlaceholder}
@@ -130,6 +155,16 @@
   </div>
 </div>
 
+<!-- Mount the scanner only while open so the camera isn't grabbed on page load. -->
+<Modal
+  open={showScanner}
+  fullscreen
+  label={i18n.m.scanTitle}
+  onClose={() => (showScanner = false)}
+>
+  {#if showScanner}<QrScanner onCode={onScanned} />{/if}
+</Modal>
+
 <style>
   .page {
     min-height: 100dvh;
@@ -138,7 +173,11 @@
     align-items: center;
     justify-content: center;
     gap: 1.25rem;
-    padding: 1.5rem;
+    /* Clear the iOS notch/status bar (PWA runs edge-to-edge under it). */
+    padding: max(1.5rem, env(safe-area-inset-top))
+      max(1.5rem, env(safe-area-inset-right))
+      max(1.5rem, env(safe-area-inset-bottom))
+      max(1.5rem, env(safe-area-inset-left));
   }
   .prefs {
     width: min(24rem, 100%);
@@ -253,6 +292,22 @@
     padding: 0 1.2em;
     font-weight: 600;
   }
+  /* Camera-scan button — a square icon that sits left of the code input. */
+  .join .scan {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    min-width: 44px;
+    padding: 0;
+    background: var(--halo-bg-light);
+    border: 1px solid var(--halo-border);
+    color: var(--halo-text-muted);
+  }
+  .join .scan:hover {
+    color: var(--halo-accent);
+    border-color: var(--halo-accent);
+  }
   .error {
     margin: 0;
     color: var(--halo-error);
@@ -260,9 +315,12 @@
     text-align: center;
   }
   @media (max-width: 640px) {
-    /* Tighter gutters on a phone. */
+    /* Tighter gutters on a phone, still clearing the notch/status bar. */
     .page {
-      padding: 1rem;
+      padding: max(1rem, env(safe-area-inset-top))
+        max(1rem, env(safe-area-inset-right))
+        max(1rem, env(safe-area-inset-bottom))
+        max(1rem, env(safe-area-inset-left));
     }
     .lobby {
       padding: 1.5rem;

@@ -1302,6 +1302,7 @@ __metadata:
     "@vitest/browser-playwright": "npm:^4.1.10"
     cannon-es: "npm:^0.20.0"
     eslint: "npm:^10.4.0"
+    jsqr: "npm:^1.4.0"
     playwright: "npm:^1.61.1"
     prettier: "npm:^3.8.3"
     prettier-plugin-svelte: "npm:^4.0.1"
@@ -1968,6 +1969,13 @@ __metadata:
   version: 1.0.1
   resolution: "json-stable-stringify-without-jsonify@npm:1.0.1"
   checksum: 10/12786c2e2f22c27439e6db0532ba321f1d0617c27ad8cb1c352a0e9249a50182fd1ba8b52a18899291604b0c32eafa8afd09e51203f19109a0537f68db2b652d
+  languageName: node
+  linkType: hard
+
+"jsqr@npm:^1.4.0":
+  version: 1.4.0
+  resolution: "jsqr@npm:1.4.0"
+  checksum: 10/a959aed9e6f0af2616e0a9c29431bf4c8a617a316f6fdf3ac922c405f283224a5c77b8c8dfa5deda4e4848aeb87333dc70fe5d9cf9c116e76643c5cccc5c53f2
   languageName: node
   linkType: hard
 

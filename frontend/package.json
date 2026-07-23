@@ -28,6 +28,7 @@
     "@glowbox/nixie": "^1.1.0",
     "@lucide/svelte": "^1.22.0",
     "cannon-es": "^0.20.0",
+    "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
     "three": "^0.185.1"
   },
