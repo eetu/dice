@@ -19,8 +19,9 @@ accent-orange rounded die, dark pips. Source: `frontend/static/favicon.svg`
 
 ## Wordmark
 
-`dice`, lowercase, Inter 600, `-0.04em` tracking, with the trailing **`ce`**
-accented (`<Wordmark />` — `frontend/src/lib/components/Wordmark.svelte`).
+`dice`, lowercase, Inter 600, `-0.04em` tracking, with a trailing **accent
+period** — `dice` + `<span class="accent">.</span>` (the canonical family form;
+`<Wordmark />` — `frontend/src/lib/components/Wordmark.svelte`).
 
 ## Layout
 
