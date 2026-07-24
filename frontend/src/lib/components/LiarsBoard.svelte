@@ -138,80 +138,95 @@
       </div>
     </div>
   {:else}
-    <!-- Opponents: face-down cups + counts -->
-    <div class="opponents">
-      {#each opponents as p (p.playerId)}
-        <div
-          class="opp"
-          class:turn={view.currentPlayerId === p.playerId}
-          class:out={p.out}
-        >
-          <span class="opp-name">{nameOf(p.playerId)}</span>
-          <div class="cups">
-            {#if p.out}
-              <span class="knocked">{i18n.m.outShort}</span>
-            {:else}
-              {#each Array.from({ length: p.diceCount }) as _, i (i)}
-                <span class="cup"></span>
-              {/each}
-            {/if}
-          </div>
-        </div>
-      {/each}
-    </div>
-
-    <!-- Standing bid -->
-    <div class="bidline">
-      {#if view.bid}
-        <span class="who"
-          >{i18n.m.bids(
-            nameOf(view.bid.playerId),
-            view.bid.playerId === myId,
-          )}</span
-        >
-        <span class="claim">{view.bid.quantity} ×</span>
-        {@render face(view.bid.face)}
-      {:else}
-        <span class="muted"
-          >{i18n.m.toOpen(
-            nameOf(view.currentPlayerId),
-            view.currentPlayerId === myId,
-          )}</span
-        >
-      {/if}
-      <span class="total">{i18n.m.diceInPlay(view.totalDice)}</span>
-    </div>
-
-    <!-- Reveal -->
-    {#if view.phase === "reveal" && view.reveal}
-      <div class="reveal">
-        <p class="verdict">{revealText}</p>
-        <div class="hands">
-          {#each view.reveal.hands as h (h.playerId)}
-            <div class="rhand" class:mine={h.playerId === myId}>
-              <span class="rname">{nameOf(h.playerId)}</span>
-              <div class="rdice">
-                {#each h.dice as d, i (i)}
-                  <span
-                    class="wrap"
-                    class:hit={!!view.reveal && d === view.reveal.bid.face}
-                    class:wild={!!view.reveal &&
-                      view.reveal.bid.face !== 1 &&
-                      d === 1}>{@render face(d)}</span
-                  >
+    <!-- The "table": opponents seated around a central bid pedestal, filling the
+      space between the header and your seat below. -->
+    <div class="table">
+      <div class="seats">
+        {#each opponents as p (p.playerId)}
+          <div
+            class="seat"
+            class:turn={view.currentPlayerId === p.playerId}
+            class:out={p.out}
+          >
+            <span class="seat-name">{nameOf(p.playerId)}</span>
+            <div class="cups">
+              {#if p.out}
+                <span class="knocked">{i18n.m.outShort}</span>
+              {:else}
+                {#each Array.from({ length: p.diceCount }) as _, i (i)}
+                  <span class="cup"></span>
                 {/each}
-              </div>
+              {/if}
             </div>
-          {/each}
-        </div>
-        <button class="primary" onclick={onNextRound}>{i18n.m.nextRound}</button
-        >
+          </div>
+        {/each}
       </div>
-    {/if}
 
-    <!-- Your cup + bidding controls (thumb-reachable) -->
-    <div class="you">
-      <div class="your-dice" class:my-turn={isMyTurn}>
+      <div class="center">
+        {#if view.phase === "reveal" && view.reveal}
+          <!-- Reveal: every cup shown + the verdict. -->
+          <div class="reveal">
+            <p class="verdict">{revealText}</p>
+            <div class="hands">
+              {#each view.reveal.hands as h (h.playerId)}
+                <div class="rhand" class:mine={h.playerId === myId}>
+                  <span class="rname">{nameOf(h.playerId)}</span>
+                  <div class="rdice">
+                    {#each h.dice as d, i (i)}
+                      <span
+                        class="wrap"
+                        class:hit={!!view.reveal && d === view.reveal.bid.face}
+                        class:wild={!!view.reveal &&
+                          view.reveal.bid.face !== 1 &&
+                          d === 1}>{@render face(d)}</span
+                      >
+                    {/each}
+                  </div>
+                </div>
+              {/each}
+            </div>
+            <button class="primary" onclick={onNextRound}
+              >{i18n.m.nextRound}</button
+            >
+          </div>
+        {:else}
+          <!-- Standing bid pedestal — the round's progress at a glance. -->
+          <div class="pedestal">
+            {#if view.bid}
+              <div class="bid-amount">
+                <span class="qty">{view.bid.quantity}</span>
+                <span class="times">×</span>
+                {@render face(view.bid.face)}
+              </div>
+              <span class="bid-who"
+                >{i18n.m.bids(
+                  nameOf(view.bid.playerId),
+                  view.bid.playerId === myId,
+                )}</span
+              >
+            {:else}
+              <span class="bid-open"
+                >{i18n.m.toOpen(
+                  nameOf(view.currentPlayerId),
+                  view.currentPlayerId === myId,
+                )}</span
+              >
+            {/if}
+            <span class="turnline" class:mine={isMyTurn}>
+              {isMyTurn
+                ? i18n.m.yourTurn
+                : i18n.m.waitingFor(nameOf(view.currentPlayerId))}
+            </span>
+          </div>
+        {/if}
+      </div>
+
+      <span class="in-play">{i18n.m.diceInPlay(view.totalDice)}</span>
+    </div>
+
+    <!-- Your seat: your dice + bidding controls (thumb-reachable). -->
+    <div class="you" class:my-turn={isMyTurn}>
+      <div class="your-dice">
         {#if view.yourDice.length}
           <!-- Re-keys on each deal so the cup tumbles when a new hand is dealt;
                `--i` staggers them so they cascade in. -->
@@ -224,54 +239,48 @@
         {/if}
       </div>
 
-      {#if view.phase === "bidding" && view.yourDice.length}
-        {#if isMyTurn}
-          <div class="controls">
-            <div class="row">
-              <div class="qty">
-                <button
-                  aria-label={i18n.m.fewer}
-                  onclick={() => stepQty(-1)}
-                  disabled={draftQty <= 1}>−</button
-                >
-                <span class="n">{draftQty}</span>
-                <button
-                  aria-label={i18n.m.more}
-                  onclick={() => stepQty(1)}
-                  disabled={draftQty >= view.totalDice}>+</button
-                >
-              </div>
-              <div class="facepick">
-                {#each [1, 2, 3, 4, 5, 6] as f (f)}
-                  <button
-                    class="fp"
-                    class:sel={draftFace === f}
-                    aria-pressed={draftFace === f}
-                    aria-label={i18n.m.faceAria(f)}
-                    onclick={() => pickFace(f)}>{@render face(f)}</button
-                  >
-                {/each}
-              </div>
-            </div>
-            <div class="actions">
+      {#if view.phase === "bidding" && view.yourDice.length && isMyTurn}
+        <div class="controls">
+          <div class="row">
+            <div class="qty-step">
               <button
-                class="bid"
-                disabled={!validBid}
-                onclick={() => onBid(draftQty, draftFace)}
+                aria-label={i18n.m.fewer}
+                onclick={() => stepQty(-1)}
+                disabled={draftQty <= 1}>−</button
               >
-                {i18n.m.bidLabel(draftQty)}
-                {@render face(draftFace)}
-              </button>
-              <button class="liar" disabled={!view.bid} onclick={onCall}>
-                {i18n.m.liar}
-              </button>
+              <span class="n">{draftQty}</span>
+              <button
+                aria-label={i18n.m.more}
+                onclick={() => stepQty(1)}
+                disabled={draftQty >= view.totalDice}>+</button
+              >
+            </div>
+            <div class="facepick">
+              {#each [1, 2, 3, 4, 5, 6] as f (f)}
+                <button
+                  class="fp"
+                  class:sel={draftFace === f}
+                  aria-pressed={draftFace === f}
+                  aria-label={i18n.m.faceAria(f)}
+                  onclick={() => pickFace(f)}>{@render face(f)}</button
+                >
+              {/each}
             </div>
           </div>
-        {:else}
-          <p class="waiting">
-            {i18n.m.waitingFor(nameOf(view.currentPlayerId))}
-          </p>
-        {/if}
+          <div class="actions">
+            <button
+              class="bid"
+              disabled={!validBid}
+              onclick={() => onBid(draftQty, draftFace)}
+            >
+              {i18n.m.bidLabel(draftQty)}
+              {@render face(draftFace)}
+            </button>
+            <button class="liar" disabled={!view.bid} onclick={onCall}>
+              {i18n.m.liar}
+            </button>
+          </div>
+        </div>
       {/if}
     </div>
   {/if}
@@ -279,11 +288,12 @@
 
 <style>
   .liars {
+    position: relative;
     height: 100%;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.6rem;
   }
   .muted {
     color: var(--halo-text-muted);
@@ -291,43 +301,71 @@
     margin: auto;
   }
 
-  /* Opponents */
-  .opponents {
+  /* The felt table fills the space between the header and your seat. A soft
+     radial scrim lifts the seats + pedestal off the ambient dice backdrop. */
+  .table {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0.75rem;
+    border-radius: var(--halo-radius);
+    background: radial-gradient(
+      120% 90% at 50% 42%,
+      var(--halo-body) 45%,
+      transparent 100%
+    );
+  }
+
+  /* Opponent seats, pinned near the top of the felt; wrap for large tables. */
+  .seats {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
     justify-content: center;
+    flex-shrink: 0;
   }
-  .opp {
-    flex: 1 1 auto;
-    min-width: 7rem;
-    max-width: 14rem;
-    padding: 0.6rem 0.75rem;
+  .seat {
+    min-width: 6rem;
+    max-width: 12rem;
+    padding: 0.5rem 0.7rem;
     border-radius: var(--halo-radius);
     background: var(--halo-bg-light);
     border: 1px solid transparent;
+    text-align: center;
   }
-  .opp.turn {
+  .seat.turn {
     border-color: var(--halo-accent);
-    box-shadow: inset 3px 0 0 var(--halo-accent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--halo-accent) 28%, transparent);
   }
-  .opp.out {
+  .seat.out {
     opacity: 0.5;
   }
-  .opp-name {
+  .seat-name {
+    display: block;
     font-size: 0.85rem;
     color: var(--halo-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .seat.turn .seat-name {
+    color: var(--halo-accent);
+    font-weight: 600;
   }
   .cups {
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
-    margin-top: 0.35rem;
-    min-height: 1.1rem;
+    justify-content: center;
+    margin-top: 0.4rem;
+    min-height: 1rem;
   }
   .cup {
-    width: 1rem;
-    height: 1rem;
+    width: 0.95rem;
+    height: 0.95rem;
     border-radius: 4px;
     background: var(--halo-off-bg);
     box-shadow: inset 0 0 0 1px var(--halo-border);
@@ -338,35 +376,72 @@
     font-style: italic;
   }
 
-  /* Standing bid */
-  .bidline {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    padding: 0.5rem 0.9rem;
-    font-size: 1.1rem;
-    /* Solid surface (like .opp/.reveal) so the central bid state reads over the
-       backdrop. */
-    background: var(--halo-bg-light);
-    border-radius: var(--halo-radius);
+  /* The central area grows to fill the felt and centers the pedestal / reveal. */
+  .center {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    overflow: auto;
   }
-  .bidline .claim {
-    font-weight: 700;
+  .pedestal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 1rem 1.6rem;
+    background: var(--halo-bg-main);
+    border: 1px solid var(--halo-border);
+    border-radius: var(--halo-radius);
+    box-shadow: var(--halo-shadow);
+    text-align: center;
+  }
+  .bid-amount {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
     font-family: var(--halo-font-heading);
   }
-  .bidline .total {
-    flex-basis: 100%;
+  .bid-amount .qty {
+    font-size: 2.1rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .bid-amount .times {
+    color: var(--halo-text-muted);
+    font-size: 1.2rem;
+  }
+  .bid-who,
+  .bid-open {
+    color: var(--halo-text-muted);
+  }
+  .bid-open {
+    font-size: 1.1rem;
+  }
+  .turnline {
+    font-size: 0.85rem;
+    color: var(--halo-text-muted);
+  }
+  .turnline.mine {
+    color: var(--halo-accent);
+    font-weight: 600;
+  }
+  .in-play {
+    flex-shrink: 0;
     text-align: center;
-    font-size: 0.8rem;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
     color: var(--halo-text-muted);
   }
 
-  /* Reveal */
+  /* Reveal panel (replaces the pedestal during the reveal phase). */
   .reveal {
-    background: var(--halo-bg-light);
+    width: min(24rem, 100%);
+    background: var(--halo-bg-main);
+    border: 1px solid var(--halo-border);
     border-radius: var(--halo-radius);
+    box-shadow: var(--halo-shadow);
     padding: 0.9rem;
     display: flex;
     flex-direction: column;
@@ -405,43 +480,48 @@
   .wrap {
     opacity: 0.45;
   }
-  .wrap.hit {
-    opacity: 1;
-  }
-  /* A 1 counting as a wild for the bid face. */
+  .wrap.hit,
   .wrap.wild {
     opacity: 1;
   }
+  /* A 1 counting as a wild for the bid face. */
   .wrap.wild .die {
     box-shadow: inset 0 0 0 2px var(--halo-accent);
   }
 
-  /* Your area */
+  /* Your seat — the bottom tray: your dice + the bidding controls. */
   .you {
-    margin-top: auto;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.6rem;
+    align-items: center;
+    padding-top: 0.75rem;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    border-top: 1px solid var(--halo-border);
   }
   .your-dice {
     display: flex;
     gap: 0.5rem;
     justify-content: center;
     flex-wrap: wrap;
-    padding: 0.75rem;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0.5rem 0.9rem;
     background: var(--halo-bg-light);
     border-radius: var(--halo-radius);
     border: 1px solid transparent;
     perspective: 700px; /* depth for the deal tumble */
   }
-  /* The tumble animation (.dieanim) is shared in halo.css. */
-  .your-dice.my-turn {
+  .you.my-turn .your-dice {
     border-color: var(--halo-accent);
   }
   .controls {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
+    width: 100%;
+    max-width: 26rem;
   }
   .row {
     display: flex;
@@ -450,12 +530,12 @@
     flex-wrap: wrap;
     justify-content: center;
   }
-  .qty {
+  .qty-step {
     display: flex;
     align-items: center;
     gap: 0.5rem;
   }
-  .qty button {
+  .qty-step button {
     width: 2.75rem;
     height: 2.75rem;
     font-size: 1.4rem;
@@ -464,11 +544,11 @@
     background: var(--halo-bg-light);
     color: var(--halo-text-main);
   }
-  .qty button:disabled {
+  .qty-step button:disabled {
     opacity: 0.4;
     cursor: default;
   }
-  .qty .n {
+  .qty-step .n {
     min-width: 1.5rem;
     text-align: center;
     font-size: 1.5rem;
@@ -540,16 +620,6 @@
     opacity: 0.4;
     cursor: default;
   }
-  .waiting {
-    text-align: center;
-    color: var(--halo-text-muted);
-    margin: 0 auto;
-    width: fit-content;
-    /* Scrim pill so the prompt reads over the backdrop. */
-    background: var(--halo-body);
-    padding: 0.2rem 0.7rem;
-    border-radius: var(--halo-radius-pill);
-  }
 
   /* Winner — fills the board so the fireworks fill the background. */
   .over {
@@ -613,16 +683,24 @@
     width: 0.32rem;
     height: 0.32rem;
   }
-  /* Smaller dice inside the bid line + reveal + bid button. The face picker uses
-     the full-size die (it's now the tap target itself, no surrounding box). */
-  .bidline .die,
+  /* Bigger die inside the bid pedestal — it's the headline. */
+  .bid-amount .die {
+    width: 2.8rem;
+    height: 2.8rem;
+    padding: 0.32rem;
+  }
+  .bid-amount .pip.on {
+    width: 0.38rem;
+    height: 0.38rem;
+  }
+  /* Smaller dice inside the reveal + bid button. The face picker uses the
+     full-size die (it's the tap target itself, no surrounding box). */
   .rdice .die,
   .actions .bid .die {
     width: 1.6rem;
     height: 1.6rem;
     padding: 0.18rem;
   }
-  .bidline .pip.on,
   .rdice .pip.on,
   .actions .bid .pip.on {
     width: 0.22rem;

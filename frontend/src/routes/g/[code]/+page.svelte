@@ -18,6 +18,7 @@
   import SharePanel from "$lib/components/SharePanel.svelte";
   import Switch from "$lib/components/Switch.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
+  import Toast from "$lib/components/Toast.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import Wordmark from "$lib/components/Wordmark.svelte";
   import YatzyBoard from "$lib/components/YatzyBoard.svelte";
@@ -80,6 +81,19 @@
   // it instead of reconnecting forever.
   $effect(() => {
     if (socket.ended) phase = "ended";
+  });
+  // Surface a dropped connection: while the board is up (`ready`) but the socket
+  // isn't connected, the game can't progress. Debounce ~600ms so a quick
+  // reconnect doesn't flash the toast; clears automatically once reconnected.
+  let connLost = $state(false);
+  $effect(() => {
+    const lost = phase === "ready" && socket.status !== "connected";
+    if (!lost) {
+      connLost = false;
+      return;
+    }
+    const t = setTimeout(() => (connLost = true), 600);
+    return () => clearTimeout(t);
   });
   const myName = $derived(
     players.find((p) => p.id === myId)?.name ?? session.name,
@@ -218,24 +232,16 @@
 
 <div
   class="page"
-  class:boarded={mode === "yatzy" || mode === "farkle" || isOver}
+  class:boarded={mode === "yatzy" ||
+    mode === "farkle" ||
+    mode === "liars" ||
+    isOver}
 >
   <header>
     <div class="hleft">
       <a class="home" href={resolve("/")} onclick={() => socket.disconnect()}
         ><Wordmark /></a
       >
-      <span
-        class="status"
-        class:connected={socket.status === "connected"}
-        role="img"
-        aria-label={socket.status === "connected"
-          ? i18n.m.connected
-          : i18n.m.disconnected}
-        title={socket.status === "connected"
-          ? i18n.m.connected
-          : i18n.m.disconnected}
-      ></span>
     </div>
     <button
       class="code-chip"
@@ -258,6 +264,10 @@
       >
     </div>
   </header>
+
+  {#if connLost}
+    <Toast message={i18n.m.connectionLost} variant="warn" busy />
+  {/if}
 
   {#if phase === "notfound"}
     <div class="notice halo-card">
@@ -576,52 +586,8 @@
   .code-chip:hover .qr {
     filter: brightness(1.1);
   }
-  .status {
-    position: relative;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex: none;
-    background: var(--halo-disconnected);
-    transition: background var(--halo-d-fast);
-  }
-  .status.connected {
-    background: var(--halo-connected);
-    /* Soft halo so the "live" dot glows rather than sitting flat. */
-    box-shadow: 0 0 6px
-      color-mix(in srgb, var(--halo-connected) 65%, transparent);
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    /* A slow "ping" ring emanating from the connected dot — a quiet heartbeat. */
-    .status.connected::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      background: var(--halo-connected);
-      animation: statusPing 2.6s ease-out infinite;
-    }
-    /* Reconnecting — a gentle blink on the disconnected dot. */
-    .status:not(.connected) {
-      animation: statusBlink 1.3s ease-in-out infinite;
-    }
-  }
-  @keyframes statusPing {
-    0% {
-      transform: scale(1);
-      opacity: 0.5;
-    }
-    70%,
-    100% {
-      transform: scale(2.6);
-      opacity: 0;
-    }
-  }
-  @keyframes statusBlink {
-    50% {
-      opacity: 0.4;
-    }
-  }
+  /* Connection state is now surfaced only on drop, via the top Toast (a dropped
+     connection means the game can't progress) — no always-on "connected" dot. */
   .leave {
     background: var(--halo-bg-main);
     border: 1px solid var(--halo-border);

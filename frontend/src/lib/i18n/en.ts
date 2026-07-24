@@ -32,6 +32,7 @@ export const en = {
   connecting: "Connecting…",
   connected: "connected",
   disconnected: "disconnected",
+  connectionLost: "Connection lost — reconnecting…",
   backToStart: "Back to start",
   retry: "Retry",
   notFoundTitle: "Game not found",

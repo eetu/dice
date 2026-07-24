@@ -33,6 +33,7 @@ export const fi: Catalog = {
   connecting: "Yhdistetään…",
   connected: "yhteydessä",
   disconnected: "ei yhteyttä",
+  connectionLost: "Yhteys katkesi — yhdistetään uudelleen…",
   backToStart: "Takaisin alkuun",
   retry: "Yritä uudelleen",
   notFoundTitle: "Peliä ei löytynyt",
