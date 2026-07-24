@@ -70,6 +70,7 @@
 
   function toggle(i: number) {
     if (!canPick) return;
+    diceAudio.blip(!selected.includes(i)); // rising = select, dipping = deselect
     // Send the toggled selection; the highlight updates when the view echoes it
     // back (server-authoritative, like Yatzy holds).
     onSelect(
@@ -159,13 +160,17 @@
                 aria-label={i18n.m.farklePick}
                 onclick={() => toggle(i)}
               >
-                {#key rollAnim}<span class="dieanim tumble" style="--i:{i}"
+                {#key rollAnim}<span
+                    class="dieanim tumble"
+                    style="--i:{i}; --dir:{i % 2 ? 1 : -1}"
                     >{@render face(f)}</span
                   >{/key}
               </button>
             {:else}
               <span class="dietile static" class:sel={view.selected[i]}
-                >{#key rollAnim}<span class="dieanim tumble" style="--i:{i}"
+                >{#key rollAnim}<span
+                    class="dieanim tumble"
+                    style="--i:{i}; --dir:{i % 2 ? 1 : -1}"
                     >{@render face(f)}</span
                   >{/key}</span
               >
@@ -324,32 +329,10 @@
     justify-content: center;
     flex-wrap: wrap;
     perspective: 700px;
+    /* Up to 6 dice here → a tighter cascade so the whole roll stays snappy. */
+    --stagger: 55ms;
   }
-  .dieanim {
-    display: inline-flex;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .dieanim.tumble {
-      animation: tumble 0.6s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
-      animation-delay: calc(var(--i, 0) * 60ms);
-    }
-  }
-  @keyframes tumble {
-    0% {
-      transform: translateY(-22px) rotateX(-220deg) rotateZ(-40deg) scale(0.6);
-      opacity: 0;
-    }
-    45% {
-      transform: translateY(0) rotateX(30deg) rotateZ(16deg) scale(1.18);
-      opacity: 1;
-    }
-    70% {
-      transform: rotateX(-12deg) rotateZ(-6deg) scale(0.94);
-    }
-    100% {
-      transform: none;
-    }
-  }
+  /* The tumble animation (.dieanim) is shared in halo.css. */
   .dietile {
     padding: 0;
     border: none;

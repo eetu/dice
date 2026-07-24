@@ -158,3 +158,43 @@ button {
   outline: 2px solid var(--halo-accent);
   outline-offset: 2px;
 }
+
+/* Shared dice tumble — the drop-in flip used by every flat-tile game board
+   (Yatzy / Farkle / Liar's), so the roll reads the same everywhere. The board
+   puts `perspective` on the dice row and re-keys the tiles each roll to replay
+   it; per-die it passes `--i` (cascade index) and `--dir` (±1, alternating spin
+   so the dice don't tumble in lockstep). `--stagger` tunes the cascade gap. */
+.dieanim {
+  display: inline-flex;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dieanim.tumble {
+    animation: dice-tumble 0.66s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * var(--stagger, 70ms));
+  }
+}
+@keyframes dice-tumble {
+  0% {
+    transform: translateY(-34px) rotateX(-300deg)
+      rotateY(calc(var(--dir, 1) * 160deg))
+      rotateZ(calc(var(--dir, 1) * -46deg)) scale(0.55);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(0) rotateX(26deg) rotateY(calc(var(--dir, 1) * 6deg))
+      rotateZ(calc(var(--dir, 1) * 15deg)) scale(1.2);
+    opacity: 1;
+  }
+  70% {
+    transform: rotateX(-11deg) rotateZ(calc(var(--dir, 1) * -6deg)) scale(0.92);
+  }
+  86% {
+    transform: rotateX(4deg) scale(1.04);
+  }
+  100% {
+    transform: none;
+  }
+}

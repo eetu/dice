@@ -151,6 +151,18 @@
     onRoll();
   }
 
+  // Scoring a box "pops" it in — a bottle-pop confirmation on your own tap.
+  function doScore(category: YatzyCat) {
+    diceAudio.plop();
+    onScore(category);
+  }
+
+  // Toggling a hold blips — rising when holding, dipping when releasing.
+  function doHold(index: number) {
+    if (view) diceAudio.blip(!view.held[index]);
+    onHold(index);
+  }
+
   const isMyTurn = $derived(!!view && !!myId && view.currentPlayerId === myId);
   const iPlay = $derived(!!view && !!myId && view.order.includes(myId));
   const canHold = $derived(
@@ -258,8 +270,10 @@
      `--i` staggers the dice so they cascade in rather than flipping in unison. -->
 {#snippet animDie(f: number, held: boolean, i: number)}
   {#key rollAnim}
-    <span class="dieanim" class:tumble={!held} style="--i:{i}"
-      >{@render face(f)}</span
+    <span
+      class="dieanim"
+      class:tumble={!held}
+      style="--i:{i}; --dir:{i % 2 ? 1 : -1}">{@render face(f)}</span
     >
   {/key}
 {/snippet}
@@ -273,7 +287,7 @@
       <button
         class="score"
         class:pulse={cat === pulseCat}
-        onclick={() => onScore(cat)}
+        onclick={() => doScore(cat)}
       >
         {previewOf(cat)}
       </button>
@@ -292,7 +306,7 @@
     <button
       class="pscore"
       class:pulse={cat === pulseCat}
-      onclick={() => onScore(cat)}>{previewOf(cat)}</button
+      onclick={() => doScore(cat)}>{previewOf(cat)}</button
     >
   {:else}
     <span class="pv dash">–</span>
@@ -463,7 +477,7 @@
               class:held={view.held[i]}
               aria-pressed={view.held[i]}
               aria-label={i18n.m.yatzyHoldHint}
-              onclick={() => onHold(i)}
+              onclick={() => doHold(i)}
               >{@render animDie(f, view.held[i], i)}</button
             >
           {:else}
@@ -797,35 +811,8 @@
       transparent 100%
     );
   }
-  .dieanim {
-    display: inline-flex;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .dieanim.tumble {
-      animation: tumble 0.6s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
-      animation-delay: calc(var(--i, 0) * 70ms); /* dice cascade in */
-    }
-  }
-  /* A full multi-axis flip that drops in and bounces to rest. */
-  @keyframes tumble {
-    0% {
-      transform: translateY(-22px) rotateX(-220deg) rotateZ(-40deg) scale(0.6);
-      opacity: 0;
-    }
-    45% {
-      transform: translateY(0) rotateX(30deg) rotateZ(16deg) scale(1.18);
-      opacity: 1;
-    }
-    70% {
-      transform: rotateX(-12deg) rotateZ(-6deg) scale(0.94);
-    }
-    88% {
-      transform: rotateX(4deg) scale(1.03);
-    }
-    100% {
-      transform: none;
-    }
-  }
+  /* The tumble animation (.dieanim / .dieanim.tumble / @keyframes dice-tumble)
+     is shared in halo.css across all the dice-game boards. */
   /* The die itself is the tap target — no wrapping button chrome. */
   .dietile {
     padding: 0;

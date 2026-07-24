@@ -97,6 +97,12 @@
     draftQty = Math.max(1, Math.min(max, draftQty + d));
   }
 
+  // Picking a bid face blips (a die selection, shared with the other games).
+  function pickFace(f: number) {
+    if (f !== draftFace) diceAudio.blip();
+    draftFace = f;
+  }
+
   const revealText = $derived.by(() => {
     const r = view?.reveal;
     if (!r) return "";
@@ -211,7 +217,7 @@
                `--i` staggers them so they cascade in. -->
           {#each view.yourDice as d, i (i)}{#key dealAnim}<span
                 class="dieanim tumble"
-                style="--i:{i}">{@render face(d)}</span
+                style="--i:{i}; --dir:{i % 2 ? 1 : -1}">{@render face(d)}</span
               >{/key}{/each}
         {:else}
           <span class="knocked">{i18n.m.spectating}</span>
@@ -242,7 +248,7 @@
                     class:sel={draftFace === f}
                     aria-pressed={draftFace === f}
                     aria-label={i18n.m.faceAria(f)}
-                    onclick={() => (draftFace = f)}>{@render face(f)}</button
+                    onclick={() => pickFace(f)}>{@render face(f)}</button
                   >
                 {/each}
               </div>
@@ -428,35 +434,7 @@
     border: 1px solid transparent;
     perspective: 700px; /* depth for the deal tumble */
   }
-  .dieanim {
-    display: inline-flex;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .dieanim.tumble {
-      animation: tumble 0.6s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
-      animation-delay: calc(var(--i, 0) * 70ms); /* dice cascade in */
-    }
-  }
-  /* A full multi-axis flip that drops in and bounces to rest. */
-  @keyframes tumble {
-    0% {
-      transform: translateY(-22px) rotateX(-220deg) rotateZ(-40deg) scale(0.6);
-      opacity: 0;
-    }
-    45% {
-      transform: translateY(0) rotateX(30deg) rotateZ(16deg) scale(1.18);
-      opacity: 1;
-    }
-    70% {
-      transform: rotateX(-12deg) rotateZ(-6deg) scale(0.94);
-    }
-    88% {
-      transform: rotateX(4deg) scale(1.03);
-    }
-    100% {
-      transform: none;
-    }
-  }
+  /* The tumble animation (.dieanim) is shared in halo.css. */
   .your-dice.my-turn {
     border-color: var(--halo-accent);
   }

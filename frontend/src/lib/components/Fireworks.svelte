@@ -4,6 +4,8 @@
   // canvas/WebGL). Honors prefers-reduced-motion: a single static burst, no loop.
   import { onMount } from "svelte";
 
+  import { diceAudio } from "$lib/stores/audio.svelte";
+
   let host = $state<HTMLDivElement>();
   let pre = $state<HTMLPreElement>();
 
@@ -22,6 +24,11 @@
     const el = pre;
     const container = host;
     if (!el || !container) return;
+
+    // The 8-bit victory fanfare — the fireworks mount once when the win screen
+    // appears, so this fires once for everyone at the table (sound plays even
+    // under reduced-motion, which only stills the visual burst).
+    diceAudio.fanfare();
 
     const FS = 14; // px — monospace cell ≈ 0.6×FS wide, 1×FS tall (line-height:1)
     const G = 0.055; // gravity per frame

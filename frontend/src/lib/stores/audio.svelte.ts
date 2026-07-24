@@ -228,35 +228,104 @@ class DiceAudio {
     }
   }
 
-  /** A quick roll: several dice tumbling then settling — for the flat-tile games
-   *  (Liar's Dice / Yatzy) that have no physics engine. A dense scatter of plastic
-   *  clicks tapering off, capped by a couple of low settle knocks. */
+  /** One low-passed note — the building block of the 8-bit sounds (roll tumble,
+   *  win fanfare). Square by default (the pulse-channel lead/harmony); pass
+   *  `type: "triangle"` for the bass voice. The low-pass keeps the square's edge
+   *  mellow. `t` = start time, `peak` = level, `dur` = decay length. */
+  #note(
+    ctx: AudioContext,
+    t: number,
+    freq: number,
+    peak: number,
+    dur: number,
+    cutoff = 2600,
+    type: OscillatorType = "square",
+  ): void {
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = cutoff;
+    lp.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(lp).connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+
+  /** A quick roll — for the flat-tile games (Liar's Dice / Yatzy / Farkle) that
+   *  have no physics engine. A retro chiptune "tumble": a fast run of square
+   *  blips hopping around a pentatonic scale, thinning as the dice settle, capped
+   *  by a lower resolve note. (The 3D dice keep their physical clack/splash.) */
   roll(n = 5): void {
     if (this.muted) return;
     const ctx = this.#ensure();
-    if (!ctx || !this.#noise) return;
+    if (!ctx) return;
     const t0 = ctx.currentTime;
-    const grains = Math.min(16, 7 + n);
-    for (let i = 0; i < grains; i++) {
-      const frac = i / grains; // dense at first, thinning as the dice settle
-      const t = t0 + frac * 0.34 + Math.random() * 0.04;
-      this.#rattleGrain(ctx, t, 0.75 * (1 - frac) + 0.25);
+    const steps = Math.min(13, 7 + n);
+    // C-major pentatonic (C D E G A) — random hops read musical, not noisy.
+    const scale = [523, 587, 659, 784, 880];
+    let t = t0;
+    for (let i = 0; i < steps; i++) {
+      const frac = i / steps; // dense at first, thinning as it settles
+      const f = scale[Math.floor(Math.random() * scale.length)];
+      this.#note(ctx, t, f, 0.11 * (1 - frac) + 0.03, 0.05);
+      t += 0.026 + frac * 0.03;
     }
-    // A couple of firm low knocks as the dice come to rest.
-    for (let i = 0; i < 2; i++) {
-      const t = t0 + 0.3 + i * 0.055 + Math.random() * 0.02;
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(150 + Math.random() * 40, t);
-      osc.frequency.exponentialRampToValueAtTime(80, t + 0.1);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.5, t + 0.005);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
-      osc.connect(g).connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.16);
-    }
+    // Resolve note — lower + a touch longer, marking the dice coming to rest.
+    this.#note(ctx, t + 0.02, 392, 0.13, 0.14);
+  }
+
+  /** A triumphant 8-bit victory fanfare, played once over the winner fireworks.
+   *  A "Course Clear"-style *homage* (an original phrase, not the real tune): a
+   *  triplet arpeggio climb that resolves through the "Mario cadence" — the
+   *  whole-step ♭VI→♭VII→I ascent (here Ab→Bb→C) that gives the level-clear its
+   *  lift. Three voices matching the NES 2A03's exactly-three tonal channels: a
+   *  pulse lead (top), a pulse harmony a chord-tone below, and a triangle bass. */
+  fanfare(): void {
+    if (this.muted) return;
+    const ctx = this.#ensure();
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const dt = 0.1; // triplet-eighth step
+
+    // [lead, harmony] per triplet step (Hz). Harmony trails a chord tone below.
+    // Climb over I (C), then arpeggiate ♭VI (Ab) and ♭VII (Bb) before landing.
+    const steps: Array<[number, number]> = [
+      [392, 330], // G4  / E4   ─ I climb
+      [523, 392], // C5  / G4
+      [659, 523], // E5  / C5
+      [784, 659], // G5  / E5
+      [831, 622], // Ab5 / Eb5  ─ ♭VI
+      [1047, 831], // C6  / Ab5
+      [1245, 1047], // Eb6 / C6
+      [932, 698], // Bb5 / F5   ─ ♭VII
+      [1175, 932], // D6  / Bb5
+      [1397, 1175], // F6  / D6
+    ];
+    let t = t0;
+    steps.forEach(([hi, lo], i) => {
+      const accent = i === 0 || i === 4 || i === 7; // chord downbeats
+      const v = accent ? 0.2 : 0.14;
+      this.#note(ctx, t, hi, v, 0.09); // pulse 1 — lead
+      this.#note(ctx, t, lo, v * 0.6, 0.09); // pulse 2 — harmony
+      t += dt;
+    });
+
+    // Land on a held tonic (C major: C6 + E5, octave-doubled in the bass).
+    const tf = t + 0.02;
+    this.#note(ctx, tf, 1047, 0.2, 0.62); // C6 lead
+    this.#note(ctx, tf, 659, 0.12, 0.62); // E5 harmony
+
+    // Triangle bass — one sustained root per chord region, then the resolve.
+    this.#note(ctx, t0, 130.81, 0.22, 0.4, 1400, "triangle"); // C3  under I
+    this.#note(ctx, t0 + dt * 4, 103.83, 0.22, 0.3, 1400, "triangle"); // Ab2 under ♭VI
+    this.#note(ctx, t0 + dt * 7, 116.54, 0.22, 0.3, 1400, "triangle"); // Bb2 under ♭VII
+    this.#note(ctx, tf, 65.41, 0.24, 0.72, 1400, "triangle"); // C2  resolve
   }
 
   /** Start the "dice rattling in a plastic cup" loop, held while the phone is
@@ -336,6 +405,85 @@ class DiceAudio {
     if (!this.#rattle) return;
     clearInterval(this.#rattle.interval);
     this.#rattle = null;
+  }
+
+  /** A short, dry retro tick for toggling a die — hold (Yatzy), set-aside select
+   *  (Farkle), or face pick (Liar's). A low-passed square (same 8-bit family as
+   *  `plop` / the nixie `tick`) that steps up when selecting and down when
+   *  releasing, so a toggle reads by ear. Shared by every game with dice
+   *  selection. `on` = selecting (vs releasing). */
+  blip(on = true): void {
+    if (this.muted) return;
+    const ctx = this.#ensure();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const f0 = on ? 480 : 440;
+    const f1 = on ? 600 : 340;
+    const osc = ctx.createOscillator();
+    osc.type = "square"; // retro edge, tamed by the low-pass below
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(f1, t + 0.035);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 2000;
+    lp.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.1, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+    osc.connect(lp).connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.08);
+  }
+
+  /** A dry, retro "place" tok for scoring a Yatzy box — a short square-wave note
+   *  (tamed by a low-pass) that settles down a touch, in the same 8-bit family as
+   *  the nixie `tick` rather than a cartoon bottle-pop. A restrained hollow tap
+   *  underneath gives it body. `strength` ∈ 0..1 = volume. */
+  plop(strength = 0.7): void {
+    if (this.muted) return;
+    const ctx = this.#ensure();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const vol = Math.max(0.05, Math.min(1, strength));
+
+    // Main tone — a square (retro timbre) with only a slight downward settle, so
+    // it reads as "placed" not a comedic boing. Low-passed so the square edge
+    // stays mellow rather than buzzy.
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(520, t);
+    osc.frequency.exponentialRampToValueAtTime(400, t + 0.06);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 1700;
+    lp.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.14 * vol, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+    osc.connect(lp).connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.13);
+
+    // A restrained hollow tap underneath for body — band-passed noise, gentler Q
+    // and lower level than before so it's a tap, not a whistle.
+    if (this.#noise) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.#noise;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.setValueAtTime(560, t);
+      bp.frequency.exponentialRampToValueAtTime(760, t + 0.04);
+      bp.Q.value = 6; // hollow, but not a focused ring
+      const gn = ctx.createGain();
+      gn.gain.setValueAtTime(0.0001, t);
+      gn.gain.exponentialRampToValueAtTime(0.16 * vol, t + 0.005);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+      src.connect(bp).connect(gn).connect(ctx.destination);
+      src.start(t);
+      src.stop(t + 0.09);
+    }
   }
 
   /** A short blip for nixie digit flips. */
