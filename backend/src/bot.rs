@@ -662,6 +662,10 @@ pub(crate) enum BotDelay {
     Quick,
     /// A "thinking" pause before a roll / score / bid.
     Think,
+    /// A free-mode roll: every client plays a ~3s physics tumble for the
+    /// PREVIOUS roll, so the next bot must wait it out plus a beat of "looking
+    /// at the result" — otherwise a bots-heavy table reads as a speed run.
+    FreeRoll,
     /// Lingering on a Liar's reveal so humans can read it.
     Reveal,
 }
@@ -671,6 +675,7 @@ impl BotDelay {
         let (lo, hi) = match self {
             BotDelay::Quick => (0.3, 0.55),
             BotDelay::Think => (0.85, 1.9),
+            BotDelay::FreeRoll => (3.6, 5.4),
             BotDelay::Reveal => (3.0, 4.0),
         };
         let mut rng = rand::rng();

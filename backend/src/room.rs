@@ -1059,9 +1059,10 @@ impl Room {
         match self.mode {
             Mode::Free => {
                 // Trivial auto-roll so a mode switch can never stall on a bot.
+                // FreeRoll pacing: clients animate the previous roll for ~3s.
                 let cur = self.players.get(self.turn_idx)?;
                 cur.bot
-                    .then(|| (cur.id.clone(), ClientMsg::Roll, BotDelay::Think))
+                    .then(|| (cur.id.clone(), ClientMsg::Roll, BotDelay::FreeRoll))
             }
             Mode::Liars => {
                 let g = self.liars.as_ref()?;
