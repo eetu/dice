@@ -27,6 +27,13 @@ mime_guess = "2"
 dotenvy = "0.15"
 rand = "0.10"
 
+# OpenTelemetry metrics export (opt-in: only active when an OTLP endpoint is
+# configured). http-proto + reqwest-rustls-webpki-roots = a pure-Rust path (no
+# openssl, no tonic/gRPC) so the xx → scratch cross-compile stays unchanged.
+opentelemetry = { version = "0.32", default-features = false, features = ["metrics"] }
+opentelemetry_sdk = { version = "0.32", default-features = false, features = ["metrics", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls-webpki-roots"] }
+
 # dev-deps (used by the integration crate)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tempfile = "3"

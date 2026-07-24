@@ -17,7 +17,15 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: "../target/debug/dice-backend",
-    env: { DICE_BIND: "127.0.0.1:3099", STATIC_DIR: "dist" },
+    env: {
+      DICE_BIND: "127.0.0.1:3099",
+      STATIC_DIR: "dist",
+      // The whole suite creates/joins from one IP (and the server is reused
+      // across runs) — don't let the public-endpoint abuse guards 429 the
+      // later specs.
+      DICE_RL_CREATE_PER_MIN: "1000",
+      DICE_RL_JOIN_PER_MIN: "1000",
+    },
     url: "http://127.0.0.1:3099/status",
     reuseExistingServer: true,
     timeout: 30_000,

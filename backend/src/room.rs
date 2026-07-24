@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::bot::{self, BotDelay, BotSkill};
+
 /// Registry of live rooms, keyed by join code.
 pub type Rooms = Arc<Mutex<HashMap<String, Arc<Mutex<Room>>>>>;
 
@@ -46,6 +48,8 @@ pub fn gen_code(existing: &HashMap<String, Arc<Mutex<Room>>>) -> String {
 
 /// A participant. `token` is the secret used to authenticate WS + actions and is
 /// never serialized; `id` is the public identifier used in every message.
+/// `skill` is likewise secret: the wire shows only `bot: true` — whether a bot
+/// is easy, hard, or a (sneaky) cheater must not be provable from traffic.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Player {
@@ -54,6 +58,11 @@ pub struct Player {
     pub token: String,
     pub name: String,
     pub connected: bool,
+    /// A server-side bot (no WebSocket; acts via the bot pump). Always
+    /// `connected: true` — the ws lifecycle never touches it.
+    pub bot: bool,
+    #[serde(skip)]
+    pub skill: Option<BotSkill>,
 }
 
 /// A polyhedral die type. `camelCase` → "d4".."d100" on the wire. `d100` is a
@@ -433,6 +442,14 @@ pub enum ClientMsg {
     },
     /// Farkle: bank the turn score and pass (also used to pass after a bust).
     FarkleBank,
+    /// Add a server-side bot player (anyone in the room may; capped like join).
+    AddBot {
+        skill: BotSkill,
+    },
+    /// Remove a bot (anyone may; only players with `bot == true` are removable).
+    RemoveBot {
+        player_id: String,
+    },
     /// Remove yourself from the game.
     Leave,
 }
@@ -505,8 +522,9 @@ impl LiarsState {
 }
 
 /// Score a single Yatzy box for a set of dice (Nordic rules). Pure — the whole
-/// ruleset lives here and is unit-tested + surfaced to the client as `preview`.
-fn yatzy_score_cat(cat: YatzyCat, dice: &[u8]) -> u16 {
+/// ruleset lives here and is unit-tested + surfaced to the client as `preview`
+/// (and reused by the bot policies in `crate::bot`).
+pub(crate) fn yatzy_score_cat(cat: YatzyCat, dice: &[u8]) -> u16 {
     // counts[f] = how many dice show face f (1..=6).
     let mut counts = [0u16; 7];
     for &d in dice {
@@ -698,7 +716,7 @@ fn is_two_triplets(counts: &[u8; 7]) -> bool {
 /// Best score for an EXACT selection (all dice must be used), or None if the
 /// selection has a die that scores nothing. Six-dice specials (straight / three
 /// pairs / two triplets) are considered when 6 dice are selected.
-fn farkle_score_exact(dice: &[u8]) -> Option<u32> {
+pub(crate) fn farkle_score_exact(dice: &[u8]) -> Option<u32> {
     let counts = farkle_counts(dice);
     let mut best = farkle_per_face(&counts);
     if dice.len() == 6 {
@@ -789,7 +807,7 @@ impl FarkleState {
 /// On-disk schema version for the persisted state file. Bump on ANY incompatible
 /// change to `PersistedRoom` (or a type it embeds) so a stale file written by an
 /// older build is discarded rather than mis-deserialized — see `crate::persist`.
-pub(crate) const PERSIST_VERSION: u32 = 2;
+pub(crate) const PERSIST_VERSION: u32 = 3;
 
 /// A room flattened for persistence — the durable half of [`Room`]. Excludes the
 /// live-only bits: the `broadcast::Sender` (recreated on load, fresh with no
@@ -809,6 +827,7 @@ pub(crate) struct PersistedRoom {
     history: Vec<RollRecord>,
     roll_seq: u64,
     max_dice: u8,
+    max_players: usize,
     liars: Option<LiarsState>,
     yatzy: Option<YatzyState>,
     farkle: Option<FarkleState>,
@@ -820,6 +839,8 @@ struct PersistedPlayer {
     id: String,
     token: String,
     name: String,
+    /// `Some(skill)` = a bot (restored `connected: true`); `None` = human.
+    bot: Option<BotSkill>,
 }
 
 pub struct Room {
@@ -832,15 +853,19 @@ pub struct Room {
     pub history: Vec<RollRecord>,
     pub tx: broadcast::Sender<ServerMsg>,
     pub last_activity: Instant,
+    /// A bot pump task is live for this room (see `bot::schedule_pump`). Set +
+    /// cleared under the room lock; never persisted.
+    pub(crate) pump_running: bool,
     liars: Option<LiarsState>,
     yatzy: Option<YatzyState>,
     farkle: Option<FarkleState>,
     roll_seq: u64,
     max_dice: u8,
+    max_players: usize,
 }
 
 impl Room {
-    pub fn new(code: String, max_dice: u8) -> Self {
+    pub fn new(code: String, max_dice: u8, max_players: usize) -> Self {
         let (tx, _rx) = broadcast::channel(256);
         Room {
             code,
@@ -862,11 +887,13 @@ impl Room {
             history: Vec::new(),
             tx,
             last_activity: Instant::now(),
+            pump_running: false,
             liars: None,
             yatzy: None,
             farkle: None,
             roll_seq: 0,
             max_dice,
+            max_players,
         }
     }
 
@@ -881,6 +908,7 @@ impl Room {
                     id: p.id.clone(),
                     token: p.token.clone(),
                     name: p.name.clone(),
+                    bot: p.skill,
                 })
                 .collect(),
             mode: self.mode,
@@ -890,6 +918,7 @@ impl Room {
             history: self.history.clone(),
             roll_seq: self.roll_seq,
             max_dice: self.max_dice,
+            max_players: self.max_players,
             liars: self.liars.clone(),
             yatzy: self.yatzy.clone(),
             farkle: self.farkle.clone(),
@@ -910,7 +939,10 @@ impl Room {
                     id: pp.id,
                     token: pp.token,
                     name: pp.name,
-                    connected: false,
+                    // Humans reconnect their sockets; bots are always present.
+                    connected: pp.bot.is_some(),
+                    bot: pp.bot.is_some(),
+                    skill: pp.bot,
                 })
                 .collect(),
             mode: p.mode,
@@ -920,11 +952,13 @@ impl Room {
             history: p.history,
             tx,
             last_activity: Instant::now(),
+            pump_running: false,
             liars: p.liars,
             yatzy: p.yatzy,
             farkle: p.farkle,
             roll_seq: p.roll_seq,
             max_dice: p.max_dice,
+            max_players: p.max_players,
         }
     }
 
@@ -942,13 +976,195 @@ impl Room {
             token: token.clone(),
             name,
             connected: false,
+            bot: false,
+            skill: None,
         });
         self.touch();
         (id, token)
     }
 
+    /// Add a server-side bot (anyone in the room may). Enforces the same player
+    /// cap as the REST join; the bot joins a pristine match exactly like a
+    /// human joiner (`on_player_joined` re-deals), else it spectates.
+    fn add_bot(&mut self, skill: BotSkill) {
+        if self.players.len() >= self.max_players {
+            return;
+        }
+        let taken: Vec<String> = self.players.iter().map(|p| p.name.clone()).collect();
+        self.players.push(Player {
+            id: Uuid::new_v4().to_string(),
+            token: Uuid::new_v4().to_string(),
+            name: bot::pick_name(&taken, skill),
+            connected: true, // bots have no socket; they are always "present"
+            bot: true,
+            skill: Some(skill),
+        });
+        crate::telemetry::metrics().bots_added.add(
+            1,
+            &crate::telemetry::attr(
+                "skill",
+                match skill {
+                    BotSkill::Easy => "easy",
+                    BotSkill::Hard => "hard",
+                    BotSkill::Cheater => "cheater",
+                },
+            ),
+        );
+        self.on_player_joined();
+        self.broadcast_sync();
+    }
+
+    /// Remove a bot (anyone may). Refuses non-bots — a human can only be
+    /// removed by their own `Leave`. Delegates to `remove_player`, which fixes
+    /// turn pointers and match state.
+    fn remove_bot(&mut self, target: &str) {
+        if !self.players.iter().any(|p| p.id == target && p.bot) {
+            return;
+        }
+        self.remove_player(target);
+    }
+
     pub fn player_count(&self) -> usize {
         self.players.len()
+    }
+
+    /// Humans only — the destroy-on-empty check counts these (a room of only
+    /// bots is dead weight and frees its code immediately).
+    pub fn human_count(&self) -> usize {
+        self.players.iter().filter(|p| !p.bot).count()
+    }
+
+    /// Is this player a cheater bot? (Gates the biased roll paths — normal
+    /// players' rolls never touch them.)
+    fn is_cheater(&self, id: &str) -> bool {
+        self.players
+            .iter()
+            .any(|p| p.id == id && p.skill == Some(BotSkill::Cheater))
+    }
+
+    /// If the game is waiting on a BOT to act: the bot's id, its next single
+    /// message, and a delay class. `None` when it's a human's move, the game is
+    /// over, or **no human is connected** — bots only play to an audience,
+    /// which also keeps an abandoned bots-only room reapable.
+    pub(crate) fn bot_next_action(&self) -> Option<(String, ClientMsg, BotDelay)> {
+        if !self.players.iter().any(|p| !p.bot && p.connected) {
+            return None;
+        }
+        let skill_of = |id: &str| {
+            self.players
+                .iter()
+                .find(|p| p.id == id && p.bot)
+                .and_then(|p| p.skill)
+        };
+        match self.mode {
+            Mode::Free => {
+                // Trivial auto-roll so a mode switch can never stall on a bot.
+                let cur = self.players.get(self.turn_idx)?;
+                cur.bot
+                    .then(|| (cur.id.clone(), ClientMsg::Roll, BotDelay::Think))
+            }
+            Mode::Liars => {
+                let g = self.liars.as_ref()?;
+                match g.phase {
+                    LiarsPhase::Over => None,
+                    LiarsPhase::Reveal => {
+                        // The round starter deals the next round if they're a
+                        // bot — after a long pause so humans can read the
+                        // reveal. A human starter is never rushed.
+                        let id = g.order.get(g.turn)?.clone();
+                        skill_of(&id).map(|_| (id, ClientMsg::NextRound, BotDelay::Reveal))
+                    }
+                    LiarsPhase::Bidding => {
+                        let id = g.order.get(g.turn)?.clone();
+                        let skill = skill_of(&id)?;
+                        let own = g.dice.get(&id)?.clone();
+                        // The cheater reads the whole table server-side —
+                        // nothing new ever crosses the wire.
+                        let truth = (skill == BotSkill::Cheater).then(|| {
+                            let mut t = [0u32; 7];
+                            for &d in g.dice.values().flatten() {
+                                if (1..=6).contains(&d) {
+                                    t[d as usize] += 1;
+                                }
+                            }
+                            t
+                        });
+                        let camo = rand::rng().random_range(0.0..1.0);
+                        let action = bot::liars_decide(
+                            &own,
+                            g.total(),
+                            g.bid.as_ref().map(|b| (b.quantity, b.face)),
+                            skill,
+                            truth.as_ref(),
+                            camo,
+                        );
+                        let msg = match action {
+                            bot::LiarsAction::Bid { quantity, face } => {
+                                ClientMsg::Bid { quantity, face }
+                            }
+                            bot::LiarsAction::Call => ClientMsg::CallLiar,
+                        };
+                        Some((id, msg, BotDelay::Think))
+                    }
+                }
+            }
+            Mode::Yatzy => {
+                let g = self.yatzy.as_ref()?;
+                if g.over {
+                    return None;
+                }
+                let id = g.order.get(g.turn)?.clone();
+                let skill = skill_of(&id)?;
+                if !g.rolled {
+                    return Some((id, ClientMsg::YatzyRoll, BotDelay::Think));
+                }
+                let open: Vec<YatzyCat> = YATZY_ALL
+                    .iter()
+                    .filter(|c| !g.scores.get(&id).is_some_and(|m| m.contains_key(c)))
+                    .copied()
+                    .collect();
+                let upper_sum = g.totals(&id).0;
+                match bot::yatzy_decide(g.dice, g.rolls_left, &open, upper_sum, skill) {
+                    bot::YatzyAction::Score(category) => {
+                        Some((id, ClientMsg::YatzyScore { category }, BotDelay::Think))
+                    }
+                    bot::YatzyAction::Roll { hold } => {
+                        // One hold toggle per pump step (converges: the desired
+                        // holds depend only on the unchanged dice), then roll.
+                        match (0..5).find(|&i| hold[i] != g.held[i]) {
+                            Some(i) => {
+                                Some((id, ClientMsg::YatzyHold { index: i as u8 }, BotDelay::Quick))
+                            }
+                            None => Some((id, ClientMsg::YatzyRoll, BotDelay::Think)),
+                        }
+                    }
+                }
+            }
+            Mode::Farkle => {
+                let g = self.farkle.as_ref()?;
+                if g.over {
+                    return None;
+                }
+                let id = g.order.get(g.turn)?.clone();
+                let skill = skill_of(&id)?;
+                let action = bot::farkle_decide(
+                    &g.dice,
+                    g.turn_score,
+                    g.remaining,
+                    g.must_pick,
+                    g.busted,
+                    g.score_of(&id),
+                    g.target,
+                    skill,
+                );
+                let msg = match action {
+                    bot::FarkleAction::SetAside(keep) => ClientMsg::FarkleSetAside { keep },
+                    bot::FarkleAction::Roll => ClientMsg::FarkleRoll,
+                    bot::FarkleAction::Bank => ClientMsg::FarkleBank,
+                };
+                Some((id, msg, BotDelay::Think))
+            }
+        }
     }
 
     pub fn player_id_for_token(&self, token: &str) -> Option<String> {
@@ -1053,6 +1269,16 @@ impl Room {
     /// Apply a client message from `actor_id`, mutating state and broadcasting.
     pub fn apply(&mut self, actor_id: &str, msg: ClientMsg) {
         self.touch();
+        self.dispatch(actor_id, msg);
+    }
+
+    /// `apply` without the TTL touch — the bot pump's entry point. Bots must
+    /// never keep an abandoned room alive; only HUMAN activity feeds the TTL.
+    pub(crate) fn apply_untouched(&mut self, actor_id: &str, msg: ClientMsg) {
+        self.dispatch(actor_id, msg);
+    }
+
+    fn dispatch(&mut self, actor_id: &str, msg: ClientMsg) {
         match msg {
             ClientMsg::Roll => self.roll(actor_id),
             ClientMsg::Reorder { order } => self.reorder(order),
@@ -1106,6 +1332,8 @@ impl Room {
             ClientMsg::FarkleSelect { keep } => self.farkle_select(actor_id, keep),
             ClientMsg::FarkleSetAside { keep } => self.farkle_set_aside(actor_id, keep),
             ClientMsg::FarkleBank => self.farkle_bank(actor_id),
+            ClientMsg::AddBot { skill } => self.add_bot(skill),
+            ClientMsg::RemoveBot { player_id } => self.remove_bot(&player_id),
             ClientMsg::Leave => self.remove_player(actor_id),
         }
     }
@@ -1120,16 +1348,28 @@ impl Room {
         if self.current_player_id().as_deref() != Some(actor_id) {
             return;
         }
-        let mut rng = rand::rng();
         // Each tray die rolls uniformly in 1..=sides for its type (d100 → 1..=100).
-        let dice: Vec<RollDie> = self
-            .dice_set
-            .iter()
-            .map(|spec| RollDie {
-                kind: spec.kind,
-                value: rng.random_range(1..=spec.kind.sides()),
-            })
-            .collect();
+        // A cheater bot's roll is best-of-2 by total; humans always take the
+        // single uniform roll.
+        let cheat = self.is_cheater(actor_id);
+        let dice: Vec<RollDie> = {
+            let specs = &self.dice_set;
+            let gen = || {
+                let mut rng = rand::rng();
+                specs
+                    .iter()
+                    .map(|spec| RollDie {
+                        kind: spec.kind,
+                        value: rng.random_range(1..=spec.kind.sides()),
+                    })
+                    .collect::<Vec<_>>()
+            };
+            if cheat {
+                bot::biased(2, gen, |d| d.iter().map(|x| x.value as i64).sum())
+            } else {
+                gen()
+            }
+        };
         let total: u32 = dice.iter().map(|d| d.value).sum();
         self.roll_seq += 1;
         let player_name = self
@@ -1152,6 +1392,9 @@ impl Room {
             self.history.drain(0..excess);
         }
         self.advance_turn();
+        crate::telemetry::metrics()
+            .rolls
+            .add(1, &crate::telemetry::attr("mode", "free"));
         let _ = self.tx.send(ServerMsg::Rolled {
             record,
             turn_idx: self.turn_idx,
@@ -1269,10 +1512,33 @@ impl Room {
 
     // ---------- Liar's Dice ----------
 
-    /// Roll a fresh hand of `n` dice (1..=6 each).
-    fn roll_hand(n: u8) -> Vec<u8> {
-        let mut rng = rand::rng();
-        (0..n).map(|_| rng.random_range(1..=6)).collect()
+    /// Roll a fresh hand of `n` dice (1..=6 each). A cheater's deal is
+    /// best-of-2 by concentration (its strongest face, wilds included — a
+    /// stacked hand is strictly stronger in Liar's); everyone else rolls once.
+    fn roll_hand_for(n: u8, cheat: bool) -> Vec<u8> {
+        let gen = || {
+            let mut rng = rand::rng();
+            (0..n).map(|_| rng.random_range(1..=6)).collect::<Vec<u8>>()
+        };
+        if !cheat {
+            return gen();
+        }
+        bot::biased(2, gen, |hand| {
+            let mut c = [0i64; 7];
+            for &d in hand {
+                c[d as usize] += 1;
+            }
+            (2..=6).map(|f| c[f] + c[1]).max().unwrap_or(0)
+        })
+    }
+
+    /// Player ids whose deals are biased (cheater bots).
+    fn cheater_ids(&self) -> HashSet<String> {
+        self.players
+            .iter()
+            .filter(|p| p.skill == Some(BotSkill::Cheater))
+            .map(|p| p.id.clone())
+            .collect()
     }
 
     /// Public entry to switch mode (used by the create endpoint so the host can
@@ -1327,6 +1593,18 @@ impl Room {
                 self.mode = Mode::Free;
             }
         }
+        crate::telemetry::metrics().mode_switches.add(
+            1,
+            &crate::telemetry::attr(
+                "mode",
+                match self.mode {
+                    Mode::Free => "free",
+                    Mode::Liars => "liars",
+                    Mode::Yatzy => "yatzy",
+                    Mode::Farkle => "farkle",
+                },
+            ),
+        );
         self.broadcast_sync(); // the `mode` field changed for everyone
         self.broadcast_liars(); // deal the (personalized) Liar's view, if any
         self.broadcast_yatzy(); // deal the (public) Yatzy view, if any
@@ -1336,9 +1614,13 @@ impl Room {
     fn start_liars(&mut self) {
         let start_dice = 5u8;
         let order: Vec<String> = self.players.iter().map(|p| p.id.clone()).collect();
+        let cheaters = self.cheater_ids();
         let mut dice = HashMap::new();
         for id in &order {
-            dice.insert(id.clone(), Self::roll_hand(start_dice));
+            dice.insert(
+                id.clone(),
+                Self::roll_hand_for(start_dice, cheaters.contains(id)),
+            );
         }
         self.liars = Some(LiarsState {
             order,
@@ -1463,6 +1745,7 @@ impl Room {
 
     /// From the reveal, deal the next round (re-roll every surviving cup).
     fn liars_next_round(&mut self, actor: &str) {
+        let cheaters = self.cheater_ids();
         {
             let Some(g) = self.liars.as_mut() else {
                 return;
@@ -1477,7 +1760,7 @@ impl Room {
             for id in ids {
                 if let Some(hand) = g.dice.get_mut(&id) {
                     if !hand.is_empty() {
-                        *hand = Self::roll_hand(hand.len() as u8);
+                        *hand = Self::roll_hand_for(hand.len() as u8, cheaters.contains(&id));
                     }
                 }
             }
@@ -1486,6 +1769,9 @@ impl Room {
             g.phase = LiarsPhase::Bidding;
             // `turn` already points at the round starter (set in liars_call).
         }
+        crate::telemetry::metrics()
+            .rolls
+            .add(1, &crate::telemetry::attr("mode", "liars"));
         self.broadcast_liars();
     }
 
@@ -1548,9 +1834,10 @@ impl Room {
     }
 
     /// Roll every non-held die (all dice on the first roll of a turn). Only the
-    /// current player, only while rolls remain.
+    /// current player, only while rolls remain. A cheater bot's roll is
+    /// best-of-2 by its best open-category preview; humans roll once, uniform.
     fn yatzy_roll(&mut self, actor: &str) {
-        let mut rng = rand::rng();
+        let cheat = self.is_cheater(actor);
         {
             let Some(g) = self.yatzy.as_mut() else {
                 return;
@@ -1561,15 +1848,43 @@ impl Room {
             if g.order.get(g.turn).map(|s| s.as_str()) != Some(actor) {
                 return;
             }
-            for i in 0..5 {
-                // On the first roll nothing is held yet, so all 5 are (re)rolled.
-                if !g.rolled || !g.held[i] {
-                    g.dice[i] = rng.random_range(1..=6);
+            let open: Vec<YatzyCat> = if cheat {
+                YATZY_ALL
+                    .iter()
+                    .filter(|c| !g.scores.get(actor).is_some_and(|m| m.contains_key(c)))
+                    .copied()
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let (base, held, rolled) = (g.dice, g.held, g.rolled);
+            let gen = || {
+                let mut rng = rand::rng();
+                let mut d = base;
+                for (i, slot) in d.iter_mut().enumerate() {
+                    // On the first roll nothing is held yet → all 5 (re)rolled.
+                    if !rolled || !held[i] {
+                        *slot = rng.random_range(1..=6);
+                    }
                 }
-            }
+                d
+            };
+            g.dice = if cheat {
+                bot::biased(2, gen, |d| {
+                    open.iter()
+                        .map(|&c| yatzy_score_cat(c, d) as i64)
+                        .max()
+                        .unwrap_or(0)
+                })
+            } else {
+                gen()
+            };
             g.rolled = true;
             g.rolls_left -= 1;
         }
+        crate::telemetry::metrics()
+            .rolls
+            .add(1, &crate::telemetry::attr("mode", "yatzy"));
         self.broadcast_yatzy();
     }
 
@@ -1725,8 +2040,10 @@ impl Room {
 
     /// Roll the remaining dice. Only the current player, only when not mid-pick.
     /// No scoring dice → the turn busts (running points lost, tap to pass).
+    /// A cheater bot's roll is best-of-2, preferring any scoring roll (dodging
+    /// ~half its busts) and then the highest-scoring one.
     fn farkle_roll(&mut self, actor: &str) {
-        let mut rng = rand::rng();
+        let cheat = self.is_cheater(actor);
         {
             let Some(g) = self.farkle.as_mut() else {
                 return;
@@ -1738,8 +2055,28 @@ impl Room {
                 return;
             }
             let n = g.remaining.clamp(1, 6);
-            let dice: Vec<u8> = (0..n).map(|_| rng.random_range(1..=6)).collect();
+            let gen = || {
+                let mut rng = rand::rng();
+                (0..n).map(|_| rng.random_range(1..=6)).collect::<Vec<u8>>()
+            };
+            let dice: Vec<u8> = if cheat {
+                bot::biased(2, gen, |d| {
+                    if !farkle_has_score(d) {
+                        return -1;
+                    }
+                    bot::farkle_selections(d)
+                        .into_iter()
+                        .map(|(_, s)| s as i64)
+                        .max()
+                        .unwrap_or(0)
+                })
+            } else {
+                gen()
+            };
             g.selected.clear(); // fresh dice → no carry-over selection
+            crate::telemetry::metrics()
+                .rolls
+                .add(1, &crate::telemetry::attr("mode", "farkle"));
             if farkle_has_score(&dice) {
                 g.dice = dice;
                 g.must_pick = true;
@@ -1927,7 +2264,7 @@ mod tests {
     use super::*;
 
     fn room_with(n: usize) -> Room {
-        let mut room = Room::new("TEST1".into(), 8);
+        let mut room = Room::new("TEST1".into(), 8, 16);
         for i in 0..n {
             room.add_player(format!("P{i}"));
         }
@@ -1939,6 +2276,270 @@ mod tests {
 
     fn ids(room: &Room) -> Vec<String> {
         room.players.iter().map(|p| p.id.clone()).collect()
+    }
+
+    // ----- bots -----
+
+    #[test]
+    fn add_bot_caps_at_max_players_and_remove_bot_refuses_humans() {
+        let mut room = Room::new("TEST1".into(), 8, 3);
+        room.add_player("Human".into());
+        room.players[0].connected = true;
+        let human = room.players[0].id.clone();
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Easy,
+            },
+        );
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Hard,
+            },
+        );
+        assert_eq!(room.player_count(), 3);
+        // At the cap — a further bot is refused.
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Cheater,
+            },
+        );
+        assert_eq!(room.player_count(), 3);
+        assert_eq!(room.human_count(), 1);
+        // RemoveBot never removes a human.
+        room.apply(
+            &human,
+            ClientMsg::RemoveBot {
+                player_id: human.clone(),
+            },
+        );
+        assert_eq!(room.human_count(), 1);
+        // But removes a bot fine.
+        let bot_id = room.players.iter().find(|p| p.bot).unwrap().id.clone();
+        room.apply(&human, ClientMsg::RemoveBot { player_id: bot_id });
+        assert_eq!(room.player_count(), 2);
+    }
+
+    #[test]
+    fn snapshot_exposes_bot_flag_but_never_skill_or_token() {
+        let mut room = room_with(1);
+        let human = ids(&room)[0].clone();
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Cheater,
+            },
+        );
+        let json = serde_json::to_string(&room.snapshot()).unwrap();
+        assert!(json.contains("\"bot\":true"));
+        // The secrets stay server-side — like the token, the skill (that this
+        // bot CHEATS) must not be provable from the wire.
+        assert!(!json.contains("skill"));
+        assert!(!json.contains("cheater"));
+        assert!(!json.contains("token"));
+    }
+
+    #[test]
+    fn bot_joins_a_pristine_match_and_is_always_connected() {
+        let mut room = room_with(1);
+        let human = ids(&room)[0].clone();
+        room.apply(
+            &human,
+            ClientMsg::SetMode {
+                mode: "yatzy".into(),
+            },
+        );
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Hard,
+            },
+        );
+        let bot = room.players.iter().find(|p| p.bot).unwrap();
+        assert!(bot.connected);
+        let view = room.yatzy_view().unwrap();
+        assert!(
+            view.order.contains(&bot.id),
+            "pristine re-deal includes bot"
+        );
+    }
+
+    #[test]
+    fn bot_actions_do_not_touch_the_ttl_clock() {
+        let mut room = room_with(1);
+        let human = ids(&room)[0].clone();
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Easy,
+            },
+        );
+        // Hand the turn to the bot (free mode: human rolls, bot is next).
+        room.apply(&human, ClientMsg::Roll);
+        let before = room.last_activity;
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let (bot_id, msg, _) = room.bot_next_action().expect("bot's turn");
+        room.apply_untouched(&bot_id, msg);
+        assert_eq!(
+            room.last_activity, before,
+            "a bot action must not keep the room alive"
+        );
+        assert_eq!(room.history.len(), 2, "the bot did roll");
+    }
+
+    #[test]
+    fn bot_next_action_requires_a_connected_human() {
+        let mut room = room_with(1);
+        let human = ids(&room)[0].clone();
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Easy,
+            },
+        );
+        room.apply(&human, ClientMsg::Roll); // bot's turn now
+        assert!(room.bot_next_action().is_some());
+        room.players[0].connected = false; // nobody watching
+        assert!(room.bot_next_action().is_none());
+    }
+
+    #[test]
+    fn bot_next_action_is_none_on_a_humans_turn() {
+        let mut room = room_with(1);
+        let human = ids(&room)[0].clone();
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Hard,
+            },
+        );
+        assert!(room.bot_next_action().is_none(), "human to move");
+    }
+
+    #[test]
+    fn yatzy_bot_turn_terminates_within_the_safety_budget() {
+        let mut room = room_with(1);
+        let human = ids(&room)[0].clone();
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Hard,
+            },
+        );
+        room.apply(
+            &human,
+            ClientMsg::SetMode {
+                mode: "yatzy".into(),
+            },
+        );
+        // Human scores out their first turn so the bot is up.
+        room.apply(&human, ClientMsg::YatzyRoll);
+        room.apply(
+            &human,
+            ClientMsg::YatzyScore {
+                category: YatzyCat::Chance,
+            },
+        );
+        // Drive the pump loop synchronously: the bot must finish its whole
+        // turn (roll/hold/score) well within the safety budget.
+        let mut steps = 0;
+        while let Some((bot_id, msg, _)) = room.bot_next_action() {
+            room.apply_untouched(&bot_id, msg);
+            steps += 1;
+            assert!(steps <= 60, "bot turn did not terminate");
+        }
+        // The turn came back to the human with the bot's card one box fuller.
+        let view = room.yatzy_view().unwrap();
+        assert_eq!(view.current_player_id.as_deref(), Some(human.as_str()));
+        let bot_card = view
+            .cards
+            .iter()
+            .find(|c| c.player_id != human)
+            .expect("bot card");
+        assert_eq!(bot_card.cells.len(), 1);
+    }
+
+    #[test]
+    fn farkle_bot_plays_a_full_turn() {
+        let mut room = room_with(1);
+        let human = ids(&room)[0].clone();
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Easy,
+            },
+        );
+        room.apply(
+            &human,
+            ClientMsg::SetMode {
+                mode: "farkle".into(),
+            },
+        );
+        // Human banks an empty first roll turn quickly: roll once, then either
+        // set aside and bank, or pass the bust.
+        room.apply(&human, ClientMsg::FarkleRoll);
+        {
+            let g = room.farkle.as_ref().unwrap();
+            if g.must_pick {
+                let sel = crate::bot::farkle_selections(&g.dice)
+                    .into_iter()
+                    .next()
+                    .unwrap()
+                    .0;
+                room.apply(&human, ClientMsg::FarkleSetAside { keep: sel });
+            }
+        }
+        room.apply(&human, ClientMsg::FarkleBank);
+        // Bot plays until the turn returns.
+        let mut steps = 0;
+        while let Some((bot_id, msg, _)) = room.bot_next_action() {
+            room.apply_untouched(&bot_id, msg);
+            steps += 1;
+            assert!(steps <= 60, "bot turn did not terminate");
+        }
+        let view = room.farkle_view().unwrap();
+        assert_eq!(view.current_player_id.as_deref(), Some(human.as_str()));
+    }
+
+    #[test]
+    fn liars_bot_bids_or_calls_until_the_human_is_up_again() {
+        let mut room = room_with(1);
+        let human = ids(&room)[0].clone();
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Cheater,
+            },
+        );
+        room.apply(
+            &human,
+            ClientMsg::SetMode {
+                mode: "liars".into(),
+            },
+        );
+        // Human opens with a minimal bid; the bot must respond (bid or call).
+        room.apply(
+            &human,
+            ClientMsg::Bid {
+                quantity: 1,
+                face: 2,
+            },
+        );
+        let mut steps = 0;
+        // Runs until it's the human's move (or a reveal waits on the human).
+        while let Some((bot_id, msg, _)) = room.bot_next_action() {
+            room.apply_untouched(&bot_id, msg);
+            steps += 1;
+            assert!(steps <= 60, "liars bot did not terminate");
+        }
+        // Whatever happened (raise or call), the game is in a valid phase.
+        let g = room.liars.as_ref().unwrap();
+        assert!(matches!(
+            g.phase,
+            LiarsPhase::Bidding | LiarsPhase::Reveal | LiarsPhase::Over
+        ));
     }
 
     #[test]

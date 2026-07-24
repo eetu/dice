@@ -104,7 +104,13 @@ export const fi: Catalog = {
   history: "Historia",
   historyEmpty: "Heitot näkyvät tässä.",
 
-  // Share
+  // Share + bots
+  addBot: "Lisää botti",
+  botSkillEasy: "Helppo",
+  botSkillHard: "Vaikea",
+  botSkillCheater: "Ovela",
+  botBadge: "Botti",
+  removeBot: (name: string) => `Poista ${name}`,
   gameCode: "Pelikoodi",
   copyCode: "Kopioi koodi",
   copyInviteLink: "Kopioi kutsulinkki",

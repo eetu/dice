@@ -83,6 +83,14 @@ async fn handle_socket(
         return;
     };
 
+    // Bots pause while no human is connected; the first (re)connect resumes
+    // them — this also covers rooms restored from the persisted state file.
+    // (After the attach scope: schedule_pump takes the room lock itself.)
+    crate::bot::schedule_pump(room.clone(), st.cfg.bot_delay_ms);
+    // Paired with the -1 in `mark_disconnected` (every attached socket's exit
+    // path goes through it exactly once).
+    crate::telemetry::metrics().ws_connections.add(1, &[]);
+
     // Push the full state to just this socket: the base snapshot, plus the running
     // game's view (a personalized Liar's Dice view, or the public Yatzy/Farkle one).
     for msg in std::iter::once(ServerMsg::Sync { state: snapshot })
@@ -140,20 +148,27 @@ async fn handle_socket(
                         // ex-member can't keep acting / keep the room alive.
                         let leaving = matches!(msg, ClientMsg::Leave);
                         // Apply under the room lock, then read whether that was the
-                        // last player — dropping the guard before touching the
-                        // registry (never hold two room locks at once).
+                        // last HUMAN — dropping the guard before touching the
+                        // registry (never hold two room locks at once). Bots don't
+                        // count: a bots-only room is dead weight, free the code.
                         let empty = {
                             let mut r = room.lock().unwrap();
                             r.apply(&my_id, msg);
-                            leaving && r.player_count() == 0
+                            leaving && r.human_count() == 0
                         };
+                        if empty {
+                            // The last human left → destroy the room now, rather
+                            // than leaving a zombie around until the TTL reaper.
+                            // Rejoining the code then 404s (fresh start).
+                            st.rooms.lock().unwrap().remove(&code);
+                        } else {
+                            // The message may have handed the turn to a bot
+                            // (their turn came up, AddBot, SetMode, a skip, even
+                            // this player leaving) — make sure the pump runs.
+                            // (Guard dropped above; schedule_pump locks itself.)
+                            crate::bot::schedule_pump(room.clone(), st.cfg.bot_delay_ms);
+                        }
                         if leaving {
-                            // The last player left → destroy the room now, rather
-                            // than leaving an empty zombie around until the TTL
-                            // reaper. Rejoining the code then 404s (fresh start).
-                            if empty {
-                                st.rooms.lock().unwrap().remove(&code);
-                            }
                             break;
                         }
                     }
@@ -172,4 +187,5 @@ fn mark_disconnected(room: &Arc<Mutex<Room>>, my_id: &str) {
     if let Ok(mut r) = room.lock() {
         r.set_connected(my_id, false);
     }
+    crate::telemetry::metrics().ws_connections.add(-1, &[]);
 }

@@ -171,7 +171,7 @@ mod tests {
         // A room with a player (whose token must survive) and a history entry.
         let rooms = new_rooms();
         let (id, token) = {
-            let mut room = Room::new("ABC12".into(), 8);
+            let mut room = Room::new("ABC12".into(), 8, 16);
             let (id, token) = room.add_player("Alice".into());
             // A mixed tray with per-die materials must survive the round trip.
             room.dice_set = vec![
@@ -216,6 +216,43 @@ mod tests {
     }
 
     #[test]
+    fn round_trips_a_bot_with_its_secret_skill() {
+        let path = tmp_file("bot");
+        let _ = fs::remove_file(&path);
+
+        let rooms = new_rooms();
+        {
+            let mut room = Room::new("BOT01".into(), 8, 16);
+            let (p0, _) = room.add_player("A".into());
+            room.players[0].connected = true;
+            room.apply(
+                &p0,
+                ClientMsg::AddBot {
+                    skill: crate::bot::BotSkill::Cheater,
+                },
+            );
+            rooms
+                .lock()
+                .unwrap()
+                .insert("BOT01".into(), Arc::new(Mutex::new(room)));
+        }
+
+        save(&rooms, &path);
+        let restored = new_rooms();
+        assert_eq!(load(&restored, &path), 1);
+
+        let map = restored.lock().unwrap();
+        let room = map.get("BOT01").expect("room restored").lock().unwrap();
+        let bot = room.players.iter().find(|p| p.bot).expect("bot restored");
+        // The skill (needed for it to keep playing/cheating) survived, and a
+        // restored bot is immediately "connected" — it has no socket to wait on.
+        assert_eq!(bot.skill, Some(crate::bot::BotSkill::Cheater));
+        assert!(bot.connected);
+        // The human is disconnected until their socket returns, as before.
+        assert!(room.players.iter().filter(|p| !p.bot).all(|p| !p.connected));
+    }
+
+    #[test]
     fn round_trips_an_in_progress_yatzy_match() {
         // Guards the one non-obvious serde path: YatzyState's scores are a
         // HashMap<YatzyCat, u16>, so persistence relies on the enum serializing
@@ -225,7 +262,7 @@ mod tests {
 
         let rooms = new_rooms();
         let code = {
-            let mut room = Room::new("YTZ01".into(), 8);
+            let mut room = Room::new("YTZ01".into(), 8, 16);
             let (p0, _) = room.add_player("A".into());
             room.add_player("B".into());
             for p in room.players.iter_mut() {

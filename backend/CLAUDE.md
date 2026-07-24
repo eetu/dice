@@ -21,10 +21,20 @@ token secrecy).
   (trust-proxy aware), per-IP `RateMap` token buckets (create/join), per-IP +
   global WS `WsPermit` caps, and a per-connection `ConnLimiter`. All in-memory,
   swept periodically from `lib::guard_sweep_loop`.
+- `bot.rs` — server-side bot players: skill enum + names, the PURE per-game
+  policies (`yatzy_decide` / `farkle_decide` / `liars_decide`, binomial math,
+  `biased` best-of-k), and the per-room pump task (`schedule_pump`). The room
+  glue is `Room::bot_next_action`. Invariants: schedule only after room-guard
+  scopes (non-reentrant Mutex); bot applies use `apply_untouched` (no TTL
+  feed); bots pause with no human connected; skill never serializes.
+- `telemetry.rs` — opt-in OTel metrics over OTLP/HTTP, gated + configured
+  ENTIRELY by standard `OTEL_*` env vars; a global no-op when unset. `init`
+  must run before any `metrics()` call (instrument binding); `shutdown()`
+  flushes after the persist flush.
 - `room.rs` — the heart: `Room` (players, turn, dice, history, per-room
   `broadcast::Sender`), join-code gen, `apply(actor_id, ClientMsg)`, and the
   `ServerMsg` / `ClientMsg` / `Snapshot` wire types. Unit-tested (turn advance,
-  roll validation, reorder permutation guard, leave).
+  roll validation, reorder permutation guard, leave, bots).
 - `routes.rs` — router + REST (`POST /api/games`, `POST /api/games/{code}/join`,
   `GET /api/games/{code}`, `GET /status`), CSP layer, path-traversal-safe SPA
   fallback.

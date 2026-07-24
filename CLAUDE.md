@@ -63,15 +63,31 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   lobby (create takes an optional `mode`) or via Settings (`setMode`). A `setMode`
   or a join to a **pristine** (not-yet-started) match (re)deals with everyone
   present (`on_player_joined`); joining a match already in progress spectates.
+- **Bots are server-side players** (`backend/src/bot.rs`). `addBot { skill }` /
+  `removeBot` (anyone in the room may — peer-equal, no host). The wire shows
+  only `bot: true`; the SKILL (easy/hard/cheater) is `#[serde(skip)]` like the
+  token — whether a bot cheats must never be provable from traffic. A per-room
+  "pump" task plays bot turns with jittered delays (`DICE_BOT_DELAY_MS`);
+  invariants: `schedule_pump` locks the room, so it must only be called AFTER
+  every room-guard scope (std Mutex is not reentrant); bot applies go through
+  `apply_untouched` (bots never feed the TTL — only humans keep a room alive);
+  bots pause while no human is connected; destroy-on-empty counts HUMANS
+  (`human_count`), so a bots-only room frees its code. The cheater is *sneaky*:
+  best-of-2 biased rolls at the four roll sites + perfect information in
+  Liar's, camouflaged so no single action is provably unfair.
 - **WS protocol** (`backend/src/room.rs`): server→client `sync` / `rolled` /
   `presence` / `liarsChanged`(internal) / `liars` / `yatzy` / `farkle`;
   client→server `roll` / `reorder` / `setDiceCount` / `setName` / `setDiceTheme` /
   `setDeck` / `skipTurn` / `setMode` / `bid` / `callLiar` / `nextRound` /
   `yatzyRoll` / `yatzyHold` / `yatzyScore` / `farkleRoll` / `farkleSelect` /
-  `farkleSetAside` / `farkleBank` / `leave`. Liar's dice are hidden — the server broadcasts a
+  `farkleSetAside` / `farkleBank` / `addBot` / `removeBot` / `leave`. Liar's dice are hidden — the server broadcasts a
   `liarsChanged` ping and each socket rebuilds its own `liars` view; Yatzy + Farkle
   are public so their views broadcast verbatim. All fields camelCase; TS mirror in
   `frontend/src/lib/api.ts` — keep the two in sync by hand (no codegen).
+- **Telemetry is standard OTel, metrics-only, opt-in** (`backend/src/telemetry.rs`):
+  active only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (all knobs = standard
+  `OTEL_*` vars, nothing DICE-prefixed); unset → a complete no-op. Counters for
+  games/joins/rolls/bots/reaps + live rooms/sockets gauges. No traces/logs.
 - **Dice theme is room-wide** (`setDiceTheme`, in the snapshot); UI light/dark is
   a personal `data-theme` preference. `nixie` theme renders glowbox tubes instead
   of the 3D mesh.

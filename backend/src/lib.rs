@@ -3,12 +3,14 @@
 //! ephemeral: a background task reaps rooms idle past the configured TTL, after
 //! which their codes 404.
 
+mod bot;
 mod config;
 mod error;
 mod guard;
 mod persist;
 mod room;
 mod routes;
+mod telemetry;
 mod ws;
 
 use std::future::IntoFuture;
@@ -41,6 +43,11 @@ pub async fn run_server() -> anyhow::Result<()> {
     let cfg = Config::from_env()?;
     let guard = Arc::new(Guard::from_cfg(&cfg));
     let rooms = new_rooms();
+
+    // Opt-in OTel metrics: installs the OTLP pipeline only when the standard
+    // OTEL_EXPORTER_OTLP_ENDPOINT is set (all knobs are the standard OTEL_*
+    // env vars), and MUST come before any instrument use (see telemetry.rs).
+    let telemetry = telemetry::init(&rooms);
 
     // Optional persistence: reload games flushed by the previous (graceful)
     // shutdown, then the file is consumed. Off unless DICE_STATE_FILE is set.
@@ -86,6 +93,8 @@ pub async fn run_server() -> anyhow::Result<()> {
             None => tracing::info!("shutdown signal received — ephemeral (no DICE_STATE_FILE)"),
         },
     }
+    // Flush metrics last — game data outranks telemetry in the grace window.
+    telemetry.shutdown();
     Ok(())
 }
 
@@ -143,6 +152,9 @@ async fn reap_loop(rooms: Rooms, ttl: Duration) {
             (before, map.len())
         };
         if before != after {
+            telemetry::metrics()
+                .rooms_reaped
+                .add((before - after) as u64, &[]);
             tracing::info!(
                 reaped = before - after,
                 remaining = after,

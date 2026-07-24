@@ -1,10 +1,29 @@
 <script lang="ts">
+  import Bot from "@lucide/svelte/icons/bot";
+  import X from "@lucide/svelte/icons/x";
+
+  import type { BotSkill, Player } from "$lib/api";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { qrDataUrl } from "$lib/qr";
   import { theme } from "$lib/stores/theme.svelte";
 
-  type Props = { code: string };
-  let { code }: Props = $props();
+  /** `onAddBot` present = the add-a-bot row is shown (the game page wires it).
+   *  `bots` + `onRemoveBot` list the seated bots with a remove ✕ — this panel
+   *  is reachable in EVERY mode (header code chip), unlike the free-mode
+   *  player list, so bots stay removable mid-match. */
+  type Props = {
+    code: string;
+    onAddBot?: (skill: BotSkill) => void;
+    bots?: Player[];
+    onRemoveBot?: (id: string) => void;
+  };
+  let { code, onAddBot, bots = [], onRemoveBot }: Props = $props();
+
+  const SKILLS: { skill: BotSkill; label: () => string }[] = [
+    { skill: "easy", label: () => i18n.m.botSkillEasy },
+    { skill: "hard", label: () => i18n.m.botSkillHard },
+    { skill: "cheater", label: () => i18n.m.botSkillCheater },
+  ];
 
   const joinUrl = $derived(`${location.origin}/g/${code}`);
   let qr = $state("");
@@ -47,6 +66,36 @@
       {copied === "link" ? i18n.m.linkCopied : i18n.m.copyInviteLink}
     </button>
     <p class="hint">{i18n.m.shareHint}</p>
+
+    {#if onAddBot}
+      <!-- No friends at hand? Seat a bot instead (server-side player). -->
+      <div class="bots">
+        <span class="bots-label"><Bot size={16} /> {i18n.m.addBot}</span>
+        <div class="bot-skills">
+          {#each SKILLS as s (s.skill)}
+            <button class="bot-skill" onclick={() => onAddBot(s.skill)}>
+              {s.label()}
+            </button>
+          {/each}
+        </div>
+        {#if bots.length > 0 && onRemoveBot}
+          <ul class="bot-list">
+            {#each bots as b (b.id)}
+              <li class="bot-row">
+                <Bot size={14} />
+                <span class="bot-name">{b.name}</span>
+                <button
+                  class="bot-rm"
+                  onclick={() => onRemoveBot(b.id)}
+                  aria-label={i18n.m.removeBot(b.name)}
+                  title={i18n.m.removeBot(b.name)}><X size={14} /></button
+                >
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
   </div>
   <!-- Feedback lands on the control that was clicked (code → its label, link →
     its own label); this hidden region voices it for screen readers. -->
@@ -131,6 +180,87 @@
     margin: 0.25rem 0 0;
     font-size: 0.8rem;
     color: var(--halo-text-muted);
+  }
+  /* Add-a-bot row — separated from the share block by a divider. */
+  .bots {
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--halo-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .bots-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--halo-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .bot-skills {
+    display: flex;
+    gap: 0.4rem;
+  }
+  /* Three equal pills on ONE row — they share the width and compress rather
+     than wrap (a lone pill on a second row reads broken). */
+  .bot-skill {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: nowrap;
+    min-height: 40px;
+    padding: 0.35em 0.4em;
+    border: 1px solid var(--halo-border);
+    border-radius: var(--halo-radius-pill);
+    background: var(--halo-bg-light);
+    color: var(--halo-text-main);
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .bot-skill:hover {
+    border-color: var(--halo-accent);
+    color: var(--halo-accent);
+  }
+  .bot-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .bot-row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.2rem 0.35rem 0.2rem 0.55rem;
+    border-radius: var(--halo-radius-pill);
+    background: var(--halo-bg-light);
+    color: var(--halo-text-main);
+    font-size: 0.9rem;
+  }
+  .bot-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+  .bot-rm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--halo-text-muted);
+  }
+  .bot-rm:hover {
+    color: var(--halo-error);
   }
   @media (max-width: 520px) {
     .share {

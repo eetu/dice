@@ -1,6 +1,8 @@
 <script lang="ts">
+  import Bot from "@lucide/svelte/icons/bot";
   import GripVertical from "@lucide/svelte/icons/grip-vertical";
   import Pencil from "@lucide/svelte/icons/pencil";
+  import X from "@lucide/svelte/icons/x";
 
   import type { Player } from "$lib/api";
   import { i18n } from "$lib/i18n/i18n.svelte";
@@ -11,8 +13,11 @@
     myId: string | null;
     onReorder: (order: string[]) => void;
     onRename: (name: string) => void;
+    /** Remove a bot row (peer-equal: every player may remove any bot). */
+    onRemoveBot: (id: string) => void;
   };
-  let { players, turnIdx, myId, onReorder, onRename }: Props = $props();
+  let { players, turnIdx, myId, onReorder, onRename, onRemoveBot }: Props =
+    $props();
 
   // Working copy so a live pointer-drag can reorder locally without waiting for
   // the server round-trip. Re-synced from props whenever we're not dragging.
@@ -115,13 +120,23 @@
           onkeydown={(e) => moveByKey(e, p.id)}
           ><GripVertical size={16} /></button
         >
-        <span
-          class="dot"
-          class:on={p.connected}
-          role="img"
-          aria-label={p.connected ? i18n.m.online : i18n.m.offline}
-          title={p.connected ? i18n.m.online : i18n.m.offline}
-        ></span>
+        {#if p.bot}
+          <!-- Bots have no socket to be online with — a bot mark, not a dot. -->
+          <span
+            class="bot-mark"
+            role="img"
+            aria-label={i18n.m.botBadge}
+            title={i18n.m.botBadge}><Bot size={14} /></span
+          >
+        {:else}
+          <span
+            class="dot"
+            class:on={p.connected}
+            role="img"
+            aria-label={p.connected ? i18n.m.online : i18n.m.offline}
+            title={p.connected ? i18n.m.online : i18n.m.offline}
+          ></span>
+        {/if}
         {#if editingId === p.id}
           <!-- svelte-ignore a11y_autofocus -->
           <input
@@ -147,6 +162,14 @@
         {/if}
         {#if p.id === currentId}<span class="badge">{i18n.m.turnBadge}</span
           >{/if}
+        {#if p.bot}
+          <button
+            class="rm-bot"
+            onclick={() => onRemoveBot(p.id)}
+            aria-label={i18n.m.removeBot(p.name)}
+            title={i18n.m.removeBot(p.name)}><X size={14} /></button
+          >
+        {/if}
       </li>
     {/each}
   </ul>
@@ -227,6 +250,29 @@
   .dot.on {
     background: var(--halo-connected);
     box-shadow: none;
+  }
+  /* A bot row shows a robot mark where humans show the presence dot. */
+  .bot-mark {
+    display: inline-flex;
+    align-items: center;
+    color: var(--halo-text-muted);
+    flex: none;
+  }
+  /* Remove-bot ✕ — the only "kick" in the app (bots only; peers are equal). */
+  .rm-bot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--halo-text-muted);
+    flex: none;
+  }
+  .rm-bot:hover {
+    color: var(--halo-error);
   }
   .pname {
     flex: 1;

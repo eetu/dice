@@ -52,7 +52,19 @@ Requires Rust, Node (see `frontend/.node-version`), `just`, and `bacon`.
 | `DICE_WS_PER_IP`       | `24`           | Max concurrent WebSockets per IP                            |
 | `DICE_MAX_WS`          | `20000`        | Global cap on concurrent WebSockets                        |
 | `DICE_WS_MSGS_PER_SEC` | `20`           | Per-connection inbound message budget / sec (burst 2×)      |
+| `DICE_BOT_DELAY_MS`    | `1000`         | Base bot "thinking" delay, ms (jittered; reveal pause ~3–4×) |
 | `DICE_STATE_FILE`      | _(unset)_      | Path to persist games across a graceful restart — see below |
+
+### Telemetry (optional, standard OTel)
+
+The backend exports OpenTelemetry **metrics** (games created, joins, rolls per
+mode, bots added, live rooms/sockets, reaps) over OTLP/HTTP when — and only
+when — the standard `OTEL_EXPORTER_OTLP_ENDPOINT` (or
+`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`) is set. All knobs are the standard
+`OTEL_*` env vars (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_HEADERS`,
+`OTEL_METRIC_EXPORT_INTERVAL`, …); there are no app-specific telemetry
+settings. Unset → telemetry is a complete no-op (no exporter thread, no
+sockets). No traces or logs are exported.
 
 ### Surviving a restart (optional)
 

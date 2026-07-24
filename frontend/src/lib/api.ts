@@ -1,12 +1,18 @@
 // Thin fetch layer + the wire types. Hand-mirrored from the Rust structs in
 // backend/src/room.rs and backend/src/routes.rs (no codegen). Keep in sync.
 
-/** A participant. Mirrors `room::Player` (token is never sent). */
+/** A participant. Mirrors `room::Player` (token is never sent). `bot` marks a
+ *  server-side bot player; its SKILL is a server secret (never on the wire —
+ *  whether a bot cheats must not be provable from traffic). */
 export type Player = {
   id: string;
   name: string;
   connected: boolean;
+  bot: boolean;
 };
+
+/** Bot skill for `addBot`. Mirrors `bot::BotSkill`. */
+export type BotSkill = "easy" | "hard" | "cheater";
 
 /** A polyhedral die type. Mirrors `room::DieKind`. `d100` is one tray slot that
  *  rolls a single value 1..=100 (rendered as a tens + units d10 pair). */
@@ -206,6 +212,8 @@ export type ClientMsg =
   | { type: "farkleSelect"; keep: number[] }
   | { type: "farkleSetAside"; keep: number[] }
   | { type: "farkleBank" }
+  | { type: "addBot"; skill: BotSkill }
+  | { type: "removeBot"; playerId: string }
   | { type: "leave" };
 
 /** Response from create / join. */

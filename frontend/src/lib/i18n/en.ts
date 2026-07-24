@@ -103,7 +103,13 @@ export const en = {
   history: "History",
   historyEmpty: "Rolls will appear here.",
 
-  // Share
+  // Share + bots
+  addBot: "Add a bot",
+  botSkillEasy: "Easy",
+  botSkillHard: "Hard",
+  botSkillCheater: "Sneaky",
+  botBadge: "Bot",
+  removeBot: (name: string) => `Remove ${name}`,
   gameCode: "Game code",
   copyCode: "Copy code",
   copyInviteLink: "Copy invite link",

@@ -73,7 +73,11 @@ async fn create_game(
         return Err(AppError::Busy);
     }
     let code = gen_code(&map);
-    let room = Arc::new(Mutex::new(Room::new(code.clone(), st.cfg.max_dice)));
+    let room = Arc::new(Mutex::new(Room::new(
+        code.clone(),
+        st.cfg.max_dice,
+        st.cfg.max_players,
+    )));
     let (player_id, token) = {
         let mut r = room.lock().unwrap();
         let ids = r.add_player(name);
@@ -87,6 +91,15 @@ async fn create_game(
         ids
     };
     map.insert(code.clone(), room);
+    let mode_attr = match mode.as_deref() {
+        Some("liars") => "liars",
+        Some("yatzy") => "yatzy",
+        Some("farkle") => "farkle",
+        _ => "free",
+    };
+    crate::telemetry::metrics()
+        .games_created
+        .add(1, &crate::telemetry::attr("mode", mode_attr));
     Ok(Json(
         json!({ "code": code, "playerId": player_id, "token": token }),
     ))
@@ -123,6 +136,10 @@ async fn join_game(
         r.broadcast_sync();
         ids
     };
+    // A join can re-deal a pristine match whose first seat is a bot — make sure
+    // the pump is running. (After the lock scope: schedule_pump locks the room.)
+    crate::bot::schedule_pump(room, st.cfg.bot_delay_ms);
+    crate::telemetry::metrics().players_joined.add(1, &[]);
     Ok(Json(
         json!({ "code": code, "playerId": player_id, "token": token }),
     ))

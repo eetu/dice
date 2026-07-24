@@ -10,6 +10,7 @@
   import {
     api,
     ApiError,
+    type BotSkill,
     type DieSpec,
     type Mode,
     type YatzyCat,
@@ -54,9 +55,10 @@
 
   const snap = $derived(game.snapshot);
   const players = $derived(snap?.players ?? []);
-  // Leaving as the only player destroys the room (backend removes an emptied
-  // room) — the confirm dialog says so instead of "others keep playing".
-  const lastPlayer = $derived(players.length <= 1);
+  // Leaving as the only HUMAN destroys the room (bots don't count — the backend
+  // frees a bots-only room) — the confirm dialog says so instead of "others
+  // keep playing".
+  const lastPlayer = $derived(players.filter((p) => !p.bot).length <= 1);
   const currentPlayer = $derived(snap ? (players[snap.turnIdx] ?? null) : null);
   const isMyTurn = $derived(!!myId && snap?.currentPlayerId === myId);
   const currentOffline = $derived(!!currentPlayer && !currentPlayer.connected);
@@ -201,6 +203,12 @@
   }
   function farkleBank() {
     socket.send({ type: "farkleBank" });
+  }
+  function addBot(skill: BotSkill) {
+    socket.send({ type: "addBot", skill });
+  }
+  function removeBot(playerId: string) {
+    socket.send({ type: "removeBot", playerId });
   }
   function rename(name: string) {
     session.setName(name);
@@ -381,6 +389,7 @@
             {myId}
             onReorder={reorder}
             onRename={rename}
+            onRemoveBot={removeBot}
           />
           <RollHistory history={snap.history} />
         </aside>
@@ -475,7 +484,12 @@
     label={i18n.m.invite}
     onClose={() => (showShareModal = false)}
   >
-    <SharePanel {code} />
+    <SharePanel
+      {code}
+      onAddBot={addBot}
+      bots={players.filter((p) => p.bot)}
+      onRemoveBot={removeBot}
+    />
   </Modal>
 
   {#if snap}

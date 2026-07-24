@@ -48,6 +48,10 @@ pub struct Config {
     /// broadcast amplification (one client message fans a snapshot to the whole
     /// room). `DICE_WS_MSGS_PER_SEC`, default 20.
     pub ws_msgs_per_sec: u32,
+    /// Base "thinking" delay for bot actions, in milliseconds (jittered per
+    /// action; the Liar's reveal pause is ~3–4×). `DICE_BOT_DELAY_MS`, default
+    /// 1000, min 1 — integration tests set it low to fast-forward bots.
+    pub bot_delay_ms: u64,
     /// Optional path to persist live games across a graceful restart (deploy /
     /// reboot). `DICE_STATE_FILE`, unset by default → fully ephemeral (a restart
     /// drops every game, the original model). When set, the rooms are flushed to
@@ -99,6 +103,7 @@ impl Config {
                 .filter(|&n| n >= 1)
                 .unwrap_or(20000),
             ws_msgs_per_sec: env_u32("DICE_WS_MSGS_PER_SEC", 20, 1),
+            bot_delay_ms: env_u32("DICE_BOT_DELAY_MS", 1000, 1) as u64,
             // Blank/whitespace is treated as unset (ephemeral).
             state_file: env::var("DICE_STATE_FILE")
                 .ok()
