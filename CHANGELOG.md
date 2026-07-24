@@ -7,6 +7,10 @@ versions follow semver. Add entries under **[Unreleased]** as changes land —
 
 ## [Unreleased]
 
+<!-- Add changes here as they land. -->
+
+## [1.0.2] - 2026-07-24
+
 ### Fixes
 
 - The win screen's glow is a clean centered spotlight (pure CSS) — the old
