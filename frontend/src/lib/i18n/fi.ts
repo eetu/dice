@@ -218,6 +218,7 @@ export const fi: Catalog = {
   farkleSetAside: (n: number) => `Sivuun +${n}`,
   farkleHotDice: "Kuumat nopat! Heitä kaikki kuusi uudelleen",
   farkleBusted: "Farkle! Ei pisteitä — menetät vuoron",
+  farkleBustedOther: (name: string) => `Farkle! ${name} jäi ilman pisteitä`,
   farkleYourRoll: "Sinun vuorosi — heitä",
   farkleWaiting: (name: string) => `Odotetaan pelaajaa ${name}…`,
   farkleKept: "Sivussa",

@@ -1157,12 +1157,23 @@ impl Room {
                     g.target,
                     skill,
                 );
-                let msg = match action {
-                    bot::FarkleAction::SetAside(keep) => ClientMsg::FarkleSetAside { keep },
-                    bot::FarkleAction::Roll => ClientMsg::FarkleRoll,
-                    bot::FarkleAction::Bank => ClientMsg::FarkleBank,
+                let (msg, delay) = match action {
+                    bot::FarkleAction::SetAside(keep) => {
+                        if g.selected == keep {
+                            // The pick has been visible for a beat — commit it.
+                            (ClientMsg::FarkleSetAside { keep }, BotDelay::Think)
+                        } else {
+                            // Show the pick FIRST, like a human tapping dice —
+                            // the selection broadcasts so the whole table sees
+                            // which dice the bot takes (the policy is pure, so
+                            // the next step commits this same selection).
+                            (ClientMsg::FarkleSelect { keep }, BotDelay::Think)
+                        }
+                    }
+                    bot::FarkleAction::Roll => (ClientMsg::FarkleRoll, BotDelay::Think),
+                    bot::FarkleAction::Bank => (ClientMsg::FarkleBank, BotDelay::Think),
                 };
-                Some((id, msg, BotDelay::Think))
+                Some((id, msg, delay))
             }
         }
     }
@@ -2459,6 +2470,56 @@ mod tests {
             .find(|c| c.player_id != human)
             .expect("bot card");
         assert_eq!(bot_card.cells.len(), 1);
+    }
+
+    #[test]
+    fn farkle_bot_shows_its_selection_before_setting_aside() {
+        let mut room = room_with(1);
+        let human = ids(&room)[0].clone();
+        room.apply(
+            &human,
+            ClientMsg::AddBot {
+                skill: BotSkill::Hard,
+            },
+        );
+        room.apply(
+            &human,
+            ClientMsg::SetMode {
+                mode: "farkle".into(),
+            },
+        );
+        // Fast-forward the human's turn (pass whatever happened).
+        room.apply(&human, ClientMsg::FarkleRoll);
+        {
+            let g = room.farkle.as_ref().unwrap();
+            if g.must_pick {
+                let sel = crate::bot::farkle_selections(&g.dice)
+                    .into_iter()
+                    .next()
+                    .unwrap()
+                    .0;
+                room.apply(&human, ClientMsg::FarkleSetAside { keep: sel });
+            }
+        }
+        room.apply(&human, ClientMsg::FarkleBank);
+        // Bot's turn: after its roll, a must-pick state must produce a VISIBLE
+        // FarkleSelect first, then the matching FarkleSetAside.
+        let (bot_id, msg, _) = room.bot_next_action().expect("bot rolls");
+        assert!(matches!(msg, ClientMsg::FarkleRoll));
+        room.apply_untouched(&bot_id, msg);
+        if room.farkle.as_ref().unwrap().must_pick {
+            let (_, msg, _) = room.bot_next_action().expect("bot picks");
+            let ClientMsg::FarkleSelect { keep } = msg.clone() else {
+                panic!("expected a visible FarkleSelect before the set-aside");
+            };
+            room.apply_untouched(&bot_id, msg);
+            assert_eq!(room.farkle.as_ref().unwrap().selected, keep);
+            let (_, msg, _) = room.bot_next_action().expect("bot commits");
+            match msg {
+                ClientMsg::FarkleSetAside { keep: commit } => assert_eq!(commit, keep),
+                _ => panic!("expected the matching set-aside"),
+            }
+        }
     }
 
     #[test]

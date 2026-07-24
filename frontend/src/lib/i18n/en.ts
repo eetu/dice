@@ -215,6 +215,7 @@ export const en = {
   farkleSetAside: (n: number) => `Set aside +${n}`,
   farkleHotDice: "Hot dice! Roll all six again",
   farkleBusted: "Farkle! No score — you lose this turn",
+  farkleBustedOther: (name: string) => `Farkle! ${name} rolled no score`,
   farkleYourRoll: "Your turn — roll",
   farkleWaiting: (name: string) => `Waiting for ${name}…`,
   farkleKept: "Set aside",

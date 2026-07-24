@@ -83,6 +83,46 @@
     prevHadDice = has;
   });
 
+  // Someone banked — flash their score chip with the delta (+N), so remote
+  // players (and bot turns) read what just happened, like Yatzy's score flash.
+  // Detected by diffing the banked totals between view updates.
+  let justBanked = $state<{ pid: string; delta: number } | null>(null);
+  let bankTimer: ReturnType<typeof setTimeout> | null = null;
+  let prevScores: Map<string, number> | null = null;
+  $effect(() => {
+    const v = farkle.view;
+    if (!v) {
+      prevScores = null;
+      return;
+    }
+    const now = new Map(v.scores.map((s) => [s.playerId, s.score]));
+    let found: { pid: string; delta: number } | null = null;
+    if (prevScores) {
+      for (const [pid, sc] of now) {
+        const p = prevScores.get(pid);
+        if (p !== undefined && sc > p) found = { pid, delta: sc - p };
+      }
+    }
+    prevScores = now;
+    if (!found) return;
+    justBanked = found;
+    if (bankTimer) clearTimeout(bankTimer);
+    bankTimer = setTimeout(() => (justBanked = null), 2600);
+  });
+  $effect(() => () => {
+    if (bankTimer) clearTimeout(bankTimer);
+  });
+
+  // The running turn score pops when it grows (a set-aside landed) — the cue
+  // that pairs with the selection highlight for everyone watching.
+  let scoreBump = $state(0);
+  let prevTurnScore = 0;
+  $effect(() => {
+    const ts = farkle.view?.turnScore ?? 0;
+    if (ts > prevTurnScore) scoreBump++;
+    prevTurnScore = ts;
+  });
+
   function toggle(i: number) {
     if (!canPick) return;
     diceAudio.blip(!selected.includes(i)); // rising = select, dipping = deselect
@@ -108,7 +148,12 @@
 
   const status = $derived.by(() => {
     if (!view) return "";
-    if (view.busted) return i18n.m.farkleBusted;
+    if (view.busted) {
+      // Second person for the buster, third person for everyone else watching.
+      return isMyTurn
+        ? i18n.m.farkleBusted
+        : i18n.m.farkleBustedOther(nameOf(view.currentPlayerId));
+    }
     if (isMyTurn) {
       if (view.mustPick) return i18n.m.farklePick;
       if (view.turnScore > 0 && view.remaining === 6)
@@ -153,9 +198,16 @@
     <!-- Scoreboard: wrapping chips (no horizontal scroll). -->
     <div class="scores">
       {#each view.scores as s (s.playerId)}
-        <div class="chip" class:turn={s.playerId === view.currentPlayerId}>
+        <div
+          class="chip"
+          class:turn={s.playerId === view.currentPlayerId}
+          class:just={justBanked?.pid === s.playerId}
+        >
           <span class="cn">{abbrev(nameOf(s.playerId))}</span>
           <span class="cs">{s.score}</span>
+          {#if justBanked?.pid === s.playerId}
+            <span class="delta">+{justBanked.delta}</span>
+          {/if}
         </div>
       {/each}
     </div>
@@ -163,7 +215,11 @@
 
     <!-- Play area -->
     <div class="area">
-      <p class="turnscore">{i18n.m.farkleThisTurn(view.turnScore)}</p>
+      {#key scoreBump}
+        <p class="turnscore" class:pop={scoreBump > 0}>
+          {i18n.m.farkleThisTurn(view.turnScore)}
+        </p>
+      {/key}
       {#if view.dice.length}
         <div class="dice">
           {#each view.dice as f, i (i)}
@@ -303,6 +359,29 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
+  /* A just-banked chip flashes accent and shows the delta — remote players and
+     bot turns read what happened without watching the whole turn. */
+  .chip.just {
+    animation: bankflash 2.4s ease-out;
+  }
+  .delta {
+    color: var(--halo-accent);
+    font-weight: 700;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+  }
+  @keyframes bankflash {
+    0% {
+      background: var(--halo-accent);
+      border-color: var(--halo-accent);
+    }
+    45% {
+      background: var(--halo-accent-soft);
+    }
+    100% {
+      background: var(--halo-bg-light);
+    }
+  }
   .target {
     margin: 0;
     text-align: center;
@@ -336,6 +415,21 @@
     font-size: 1.3rem;
     font-weight: 700;
     color: var(--halo-text-main);
+  }
+  /* Replays on every increase (the {#key} re-mount) — a set-aside landed. */
+  @media (prefers-reduced-motion: no-preference) {
+    .turnscore.pop {
+      animation: tspop 0.5s ease-out;
+    }
+  }
+  @keyframes tspop {
+    0% {
+      transform: scale(1.25);
+      color: var(--halo-accent);
+    }
+    100% {
+      transform: scale(1);
+    }
   }
   .remaining {
     margin: 0;
