@@ -29,7 +29,9 @@ export type NixieDiceOptions = {
 };
 
 export type NixieDiceScene = {
-  setDigits(digits: string[]): void;
+  /** One inner array per die: its tube symbols, most-significant first ("" =
+   *  unlit tube). A multi-digit die gets one tube per digit. */
+  setDigits(dice: string[][]): void;
   setColor(color: string): void;
   resize(): void;
   dispose(): void;
@@ -38,7 +40,8 @@ export type NixieDiceScene = {
 const TUBE_R = 0.62;
 const TUBE_H = 2.05;
 const CONTENT_H = 2.95; // base → domed top, for camera framing
-const GAP = 0.16;
+const GAP = 0.16; // between the tubes of one die
+const DIE_GAP = 0.66; // between dice, so a multi-digit die reads as one unit
 const INNER_R = TUBE_R * 0.72;
 const S = Math.min(
   (INNER_R * 2) / GLYPH_VIEWBOX.width,
@@ -148,7 +151,10 @@ export function createNixieDiceScene(
   container: HTMLElement,
   opts: NixieDiceOptions,
 ): NixieDiceScene {
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: "low-power",
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.transmissionResolutionScale = 0.5;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -231,25 +237,33 @@ export function createNixieDiceScene(
   const root = new THREE.Group();
   scene.add(root);
   let tubes: Tube[] = [];
+  let layoutSig = ""; // group sizes of the current tube layout
   let contentW = 12;
 
-  function layout(n: number) {
+  function layout(sizes: number[]) {
     for (const c of [...root.children]) root.remove(c);
     tubes = [];
     const [sx, sy] = nixieStyle("classic").squash;
     const cathodeSpec = nixieCathodes();
 
+    // Tube x-centres: one group of tubes per die (tight GAP within a die, a
+    // wider DIE_GAP between dice).
     const w = TUBE_R * 2;
-    const total = n * w + (n - 1) * GAP;
+    const xs: number[] = [];
+    let x = 0;
+    sizes.forEach((size, gi) => {
+      if (gi > 0) x += DIE_GAP - GAP;
+      for (let k = 0; k < size; k++) {
+        xs.push(x + w / 2);
+        x += w + GAP;
+      }
+    });
+    const total = Math.max(x - GAP, w);
     contentW = total + 0.4;
-    let x = -total / 2;
 
-    for (let i = 0; i < n; i++) {
-      const cx = x + w / 2;
-      x += w + GAP;
-
+    for (const tx of xs) {
       const group = new THREE.Group();
-      group.position.x = cx;
+      group.position.x = tx - total / 2;
       root.add(group);
 
       const glass = new THREE.Mesh(glassGeo, glassMat);
@@ -290,12 +304,15 @@ export function createNixieDiceScene(
     root.add(stand);
   }
 
-  function setDigits(digits: string[]) {
-    if (tubes.length !== digits.length) {
-      layout(digits.length);
+  function setDigits(dice: string[][]) {
+    const sig = dice.map((d) => d.length).join(",");
+    if (sig !== layoutSig) {
+      layoutSig = sig;
+      layout(dice.map((d) => d.length));
       frameContent();
     }
-    for (let i = 0; i < digits.length; i++) {
+    const digits = dice.flat();
+    for (let i = 0; i < digits.length && i < tubes.length; i++) {
       const t = tubes[i];
       const sym = digits[i];
       if (sym === t.lit) continue;
@@ -344,7 +361,7 @@ export function createNixieDiceScene(
   const ro = new ResizeObserver(() => resize());
   ro.observe(container);
 
-  layout(1);
+  setDigits([[""]]);
   resize();
 
   return {

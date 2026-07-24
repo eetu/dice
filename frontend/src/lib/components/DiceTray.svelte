@@ -25,9 +25,10 @@
   }));
 
   const KINDS: DieKind[] = ["d4", "d6", "d8", "d10", "d12", "d20", "d100"];
-  // Per-die materials = the 3D themes. `nixie` is a whole-scene render mode (a
-  // single tube can't show a multi-digit value), so it's not a per-die option.
-  const materials = THEMES.filter((t) => !t.nixie).map((t) => ({
+  // Per-die materials = the 3D themes. Making EVERY die `nixie` switches the
+  // stage to the glowing-tube renderer (one tube per digit); a lone nixie die
+  // in a mixed tray renders as a dark glass-black die in 3D.
+  const materials = THEMES.map((t) => ({
     name: t.name,
     label: i18n.m.themes[t.name] ?? t.label,
   }));

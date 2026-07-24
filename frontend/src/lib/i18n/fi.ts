@@ -239,6 +239,10 @@ export const fi: Catalog = {
     ruby: "Rubiini",
     emerald: "Smaragdi",
     gold: "Kulta",
+    fire: "Tuli",
+    water: "Vesi",
+    air: "Ilma",
+    earth: "Maa",
     nixie: "Nixie",
   },
 };

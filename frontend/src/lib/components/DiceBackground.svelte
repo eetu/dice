@@ -20,12 +20,15 @@
     toRgb,
     toRgbString,
   } from "@anarkisti/igyb/core";
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
 
   import { theme } from "$lib/stores/theme.svelte";
 
-  type Props = { opacity?: number };
-  let { opacity = 1 }: Props = $props();
+  /** `live=false` freezes the shimmer to a static frame (igyb keeps the canvas,
+   *  stops the RAF loop) — the game screen uses it: a continuous full-viewport
+   *  canvas repaint is real battery/heat for a backdrop nobody watches there. */
+  type Props = { opacity?: number; live?: boolean };
+  let { opacity = 1, live = true }: Props = $props();
 
   let el: HTMLDivElement;
 
@@ -149,12 +152,21 @@
       pointerSmoothing: 0.15, // ease the glint so it glides, not snaps
       themeTransition: 0.3, // crossfade the palette on a light/dark flip (via refresh)
       theme: palette, // thunk: refresh() re-invokes it to re-read the tokens
+      // Soft low-contrast pattern — 1.5 is indistinguishable from 2 and paints
+      // ~44% fewer pixels on every animated frame.
+      dpr: Math.min(window.devicePixelRatio || 1, 1.5),
+      animate: untrack(() => live), // kept in sync by the effect below
     });
     bg.start();
     return () => {
       bg?.destroy();
       bg = undefined;
     };
+  });
+
+  // Freeze/resume the shimmer as the route flips between lobby and game.
+  $effect(() => {
+    bg?.update({ animate: live });
   });
 
   // Re-theme in place when the light/dark theme flips. tick() defers the refresh

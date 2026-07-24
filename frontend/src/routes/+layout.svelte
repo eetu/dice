@@ -11,12 +11,17 @@
   import "@fontsource/space-grotesk/600.css";
   import "$lib/styles/halo.css";
 
-  import { updated } from "$app/state";
+  import { page, updated } from "$app/state";
   import DiceBackground from "$lib/components/DiceBackground.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { theme, watchSystemTheme } from "$lib/stores/theme.svelte";
 
   let { children } = $props();
+
+  // The ambient shimmer animates only in the lobby. In a game it freezes to a
+  // static frame — a 60 fps full-viewport canvas repaint behind the table is
+  // pure battery/heat (the 3D stage owns the motion there).
+  const bgLive = $derived(!page.url.pathname.startsWith("/g/"));
 
   // A new build was deployed (SvelteKit's version poll flipped `updated`) —
   // hard-reload to pick up the new SPA (and its matching protocol). If the
@@ -40,7 +45,7 @@
 </script>
 
 <!-- Ambient die-face backdrop on every route; content sits above it. -->
-<DiceBackground />
+<DiceBackground live={bgLive} />
 
 <div class="bg-content">{@render children()}</div>
 

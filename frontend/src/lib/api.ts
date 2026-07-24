@@ -12,6 +12,17 @@ export type Player = {
  *  rolls a single value 1..=100 (rendered as a tens + units d10 pair). */
 export type DieKind = "d4" | "d6" | "d8" | "d10" | "d12" | "d20" | "d100";
 
+/** Face count per kind. Mirrors `DieKind::sides`. */
+export const DIE_SIDES: Record<DieKind, number> = {
+  d4: 4,
+  d6: 6,
+  d8: 8,
+  d10: 10,
+  d12: 12,
+  d20: 20,
+  d100: 100,
+};
+
 /** One die in the free-mode tray (type + its own material). Mirrors `room::DieSpec`. */
 export type DieSpec = { kind: DieKind; material: string };
 

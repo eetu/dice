@@ -1,17 +1,29 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  import type { RollRecord } from "$lib/api";
+  import type { DieKind, DieSpec, RollRecord } from "$lib/api";
+  import { DIE_SIDES } from "$lib/api";
   import type { NixieDiceScene } from "$lib/dice/nixieScene";
   import { diceAudio } from "$lib/stores/audio.svelte";
 
   type Props = {
     lastRoll: RollRecord | null;
-    diceCount: number;
+    diceSet: DieSpec[];
     color: string;
     onSettled?: () => void;
   };
-  let { lastRoll, diceCount, color, onSettled }: Props = $props();
+  let { lastRoll, diceSet, color, onSettled }: Props = $props();
+
+  // One tube per digit of the kind's highest value (d20 → 2 tubes, d100 → 3);
+  // a value shorter than its die's tube count leaves the leading tubes unlit.
+  const tubesFor = (kind: DieKind) => String(DIE_SIDES[kind]).length;
+  function digitsFor(kind: DieKind, value: number): string[] {
+    const out = String(value).split("");
+    while (out.length < tubesFor(kind)) out.unshift("");
+    return out;
+  }
+  const dark = () =>
+    diceSet.map((d) => Array<string>(tubesFor(d.kind)).fill(""));
 
   let container = $state<HTMLDivElement>();
   // The scene module imports @glowbox/nixie (touches Path2D at import) + three
@@ -30,11 +42,11 @@
         glass: "#aab3c0", // clear, faintly cool glass (was near-black / smoked)
         backdrop: "#08080c",
       });
-      if (lastRoll && lastRoll.dice.length === diceCount) {
+      if (lastRoll && lastRoll.dice.length === diceSet.length) {
         seen = lastRoll.id;
-        scene.setDigits(lastRoll.dice.map((d) => String(d.value)));
+        scene.setDigits(lastRoll.dice.map((d) => digitsFor(d.kind, d.value)));
       } else {
-        scene.setDigits(Array(diceCount).fill(""));
+        scene.setDigits(dark());
       }
     });
     return () => {
@@ -45,11 +57,15 @@
     };
   });
 
-  // Idle / count change → dark (unlit) tubes matching the current count.
+  // Idle / tray change → dark (unlit) tube groups matching the current tray.
   $effect(() => {
-    const n = diceCount;
-    if (scene && !spinning && (!lastRoll || lastRoll.dice.length !== n)) {
-      scene.setDigits(Array(n).fill(""));
+    const groups = dark();
+    if (
+      scene &&
+      !spinning &&
+      (!lastRoll || lastRoll.dice.length !== groups.length)
+    ) {
+      scene.setDigits(groups);
     }
   });
 
@@ -63,11 +79,11 @@
     const r = lastRoll;
     if (scene && r && r.id !== seen) {
       seen = r.id;
-      spin(r.dice.map((d) => String(d.value)));
+      spin(r.dice.map((d) => digitsFor(d.kind, d.value)));
     }
   });
 
-  function spin(targets: string[]) {
+  function spin(targets: string[][]) {
     if (!scene) return;
     if (timer) clearTimeout(timer);
     spinning = true;
@@ -85,7 +101,7 @@
         return;
       }
       scene.setDigits(
-        targets.map(() => String(1 + Math.floor(Math.random() * 6))),
+        targets.map((g) => g.map(() => String(Math.floor(Math.random() * 10)))),
       );
       diceAudio.tick(0.25);
       timer = setTimeout(run, step);

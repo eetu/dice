@@ -40,6 +40,9 @@ export type DieShape = {
   /** Center→nearest-face distance = the height it rests at (face down). */
   inradius: number;
   readAxes: ReadAxis[];
+  /** Outward unit normal of every face — the directions that can point straight
+   *  down at a stable rest (used by the settle "flatten" pass). */
+  restNormals: THREE.Vector3[];
   /** The solid's proper rotation group (unit quaternions incl. identity). */
   rotations: THREE.Quaternion[];
   /** Numbered faces for rendering (empty for d6, which uses pips). */
@@ -382,6 +385,7 @@ function buildFaceShape(opts: BuildOpts): DieShape {
     radius,
     inradius: Math.min(...centroids.map((c) => c.length())),
     readAxes,
+    restNormals: normals.map((n) => n.clone()),
     rotations: rotationGroup(opts.gens),
     placements,
     makeGeometry: (rounded) => polyGeometry(scaled, rounded),
@@ -623,6 +627,7 @@ function cubeShape(): DieShape {
     radius: R,
     inradius: S / 2,
     readAxes,
+    restNormals: CUBE_FACES.map((f) => f.normal.clone()),
     rotations: rot,
     placements: [], // pips, drawn by DiceScene
     makeGeometry: (rounded) =>
@@ -703,6 +708,7 @@ function d4Shape(): DieShape {
       ...scaled.faces.map((f) => faceCentroid(scaled, f).length()),
     ),
     readAxes,
+    restNormals: scaled.faces.map((f) => fanNormal(scaled, f)),
     rotations: rotationGroup(faceGens(poly)),
     placements,
     makeGeometry: (rounded) => polyGeometry(scaled, rounded),

@@ -236,6 +236,10 @@ export const en = {
     ruby: "Ruby",
     emerald: "Emerald",
     gold: "Gold",
+    fire: "Fire",
+    water: "Water",
+    air: "Air",
+    earth: "Earth",
     nixie: "Nixie",
   } as Record<string, string>,
 };

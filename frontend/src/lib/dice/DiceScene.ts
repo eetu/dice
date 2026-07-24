@@ -17,6 +17,7 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 import { type Deck, deckByName } from "./decks";
+import { applyCoreTheme, makeCoreMaterial } from "./elemental";
 import { FACES, UP } from "./orient";
 import {
   type DieShape,
@@ -258,6 +259,9 @@ type Die = {
   mesh: THREE.Mesh;
   body: CANNON.Body;
   bodyMat: THREE.MeshPhysicalMaterial;
+  /** Animated inner core (the elemental-glass glow); hidden for solid themes. */
+  core: THREE.Mesh;
+  coreMat: THREE.ShaderMaterial;
   /** Pip/numeral material (tinted per die). */
   pipMat: THREE.MeshStandardMaterial;
   /** Solid material for a d100's marker dots (undefined otherwise). */
@@ -294,6 +298,9 @@ export class DiceScene {
     mat: THREE.MeshStandardMaterial;
   } | null = null;
   #rounded = true; // soft (rounded) dice bodies by default
+  #coreFrame = 0; // frame counter for the reduced-rate idle elemental churn
+  #shadowDirty = true; // dice moved/changed since the last shadow-map render
+  #reducedMotion = false; // prefers-reduced-motion → no idle core churn
   #dice: Die[] = [];
   #themeName = "ivory";
   #opts: DiceSceneOptions;
@@ -343,12 +350,25 @@ export class DiceScene {
       canvas,
       antialias: true,
       alpha: true,
+      // A dice tray doesn't need the discrete GPU on dual-GPU laptops.
+      powerPreference: "low-power",
     });
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // The elemental glass themes trigger three's transmission pass (an extra
+    // scene render) — a reduced-resolution buffer keeps it affordable, but too
+    // low and the upsampling blur reads as milky haze over the cores. 0.65 is
+    // the compromise (the idle churn renders at ~20 fps anyway).
+    this.#renderer.transmissionResolutionScale = 0.65;
     this.#renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.#renderer.toneMappingExposure = 1.15;
     this.#renderer.shadowMap.enabled = true;
     this.#renderer.shadowMap.type = THREE.PCFShadowMap;
+    // Shadows re-render only when the dice actually move (see #tick) — an idle
+    // table (even one with churning elemental cores) reuses the last map.
+    this.#renderer.shadowMap.autoUpdate = false;
+    this.#reducedMotion =
+      typeof matchMedia !== "undefined" &&
+      matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     this.#camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
     this.#camera.position.set(0, 8.5, 5.5);
@@ -461,6 +481,10 @@ export class DiceScene {
 
     this.#ro = new ResizeObserver(() => this.#resize());
     this.#ro.observe(canvas.parentElement ?? canvas);
+    // The idle churn stops while the window is unfocused (#coresActive) — rAF
+    // only auto-pauses for hidden tabs, not for a visible-but-unfocused window.
+    // Refocusing kicks the loop back on.
+    window.addEventListener("focus", this.#onFocus);
     this.#resize();
   }
 
@@ -543,6 +567,18 @@ export class DiceScene {
     mesh.receiveShadow = true;
     mesh.userData.die = true;
     group.add(mesh);
+
+    // Inner glow core for the elemental glass themes: a smaller copy of the
+    // body (same geometry, scaled) with an animated emissive-noise shader,
+    // refracted through the transmissive shell. Hidden for solid themes
+    // (#applyMaterial toggles it and points it at the theme's glass params).
+    const coreMat = makeCoreMaterial(shape.radius);
+    const core = new THREE.Mesh(mesh.geometry, coreMat);
+    // The core dominates — the shell is a thin skin, and the smaller the gap,
+    // the less bright table bleeds around the core to milk out the interior.
+    core.scale.setScalar(0.78);
+    core.visible = false;
+    group.add(core);
 
     const glyphGeos: THREE.BufferGeometry[] = [];
     let pipMat: THREE.MeshStandardMaterial;
@@ -652,7 +688,7 @@ export class DiceScene {
     );
     this.#world.addBody(body);
 
-    return {
+    const die: Die = {
       type,
       shape,
       tens,
@@ -661,13 +697,17 @@ export class DiceScene {
       mesh,
       body,
       bodyMat,
+      core,
+      coreMat,
       pipMat,
       markMat,
       glyphGeos,
       target: 1,
-      material,
+      material: "", // sentinel — #applyMaterial below does ALL the theming
       labelQuat: new THREE.Quaternion(),
     };
+    this.#applyMaterial(die, material);
+    return die;
   }
 
   /** A numeral plane: a unit plane UV-mapped into the shared glyph atlas cell,
@@ -700,9 +740,10 @@ export class DiceScene {
 
   #removeDie(die: Die) {
     this.#scene.remove(die.group);
-    die.mesh.geometry.dispose();
+    die.mesh.geometry.dispose(); // the core shares this geometry
     for (const g of die.glyphGeos) g.dispose();
     die.bodyMat.dispose();
+    die.coreMat.dispose();
     die.pipMat.dispose();
     die.markMat?.dispose();
     this.#world.removeBody(die.body);
@@ -745,14 +786,32 @@ export class DiceScene {
     else this.#requestStatic();
   }
 
-  /** Recolor one die to a material (theme slug); no-op if already applied. */
+  /** Retheme one die to a material (theme slug); no-op if already applied. */
   #applyMaterial(die: Die, name = "ivory") {
     if (die.material === name) return;
     const theme = themeByName(name);
-    die.bodyMat.color.setHex(theme.body);
-    die.bodyMat.metalness = theme.metalness;
-    die.bodyMat.roughness = theme.roughness;
-    die.bodyMat.clearcoat = theme.clearcoat;
+    const bm = die.bodyMat;
+    bm.color.setHex(theme.body);
+    bm.metalness = theme.metalness;
+    bm.roughness = theme.roughness;
+    bm.clearcoat = theme.clearcoat;
+    // Elemental glass: a transmissive shell + the emissive core glowing inside
+    // it. transmission = 0 keeps solid themes out of the transmission pass.
+    const glass = theme.glass;
+    bm.transmission = glass?.transmission ?? 0;
+    bm.ior = glass?.ior ?? 1.5;
+    bm.thickness = glass?.thickness ?? 0;
+    bm.attenuationColor.setHex(glass?.attenuationColor ?? 0xffffff);
+    bm.attenuationDistance = glass?.attenuationDistance ?? Infinity;
+    // Glass shells barely reflect the (bright, white) room environment — a full
+    // strength env wash diffuses over the surface and pastelizes the core into
+    // a toy. The specular (Fresnel) lobe is damped the same way: it's the white
+    // film that milks out the dark interior at glancing angles. Direct lights
+    // still give crisp highlights. (Same trick as the nixie tubes' glass.)
+    bm.envMapIntensity = glass ? 0.3 : 1;
+    bm.specularIntensity = glass ? 0.35 : 1;
+    die.core.visible = !!glass;
+    if (glass) applyCoreTheme(die.coreMat, glass);
     die.pipMat.color.setHex(theme.pip);
     die.markMat?.color.setHex(theme.pip);
     die.material = name;
@@ -988,31 +1047,39 @@ export class DiceScene {
       d.labelQuat.copy(relabelRotationFor(d.target, q, d.shape));
     });
 
-    // A cube at rest on a flat floor is either lying flat or balanced/wedged
-    // (typically against a wall) — there is no stable "slightly tilted" rest. So
-    // any die that settled NOT flat is wedged: ease the tail of its tumble down to
-    // a flat, face-up pose. Value stays correct — the relabel is recomputed
-    // against the flat orientation. (d6 only for now — the polyhedra rest on a
-    // face naturally with their convex colliders; generalized flatten is Phase 4.)
+    // A die at rest on the floor sits flat on a face — there is no stable
+    // "slightly tilted" rest, so any die that settled tilted is wedged (typically
+    // against a wall). Ease the tail of its tumble down to flat: swing the face
+    // that ended most floor-down EXACTLY down with the minimal rotation (which
+    // keeps the physics yaw, so nothing looks grid-aligned). The value stays
+    // correct — the relabel is recomputed against the flat pose. Dice that came
+    // to rest ON another die are left as they landed (hover reveals the value).
     const FLATTEN_TAIL = 12;
-    const flat = new THREE.Quaternion(); // identity — axis-aligned, lies flat
+    const DOWN = new THREE.Vector3(0, -1, 0);
+    const flat = new THREE.Quaternion();
+    const delta = new THREE.Quaternion();
     const axis = new THREE.Vector3();
+    const bestN = new THREE.Vector3();
     const eased = new THREE.Quaternion();
     const total = this.#frames.length;
     this.#dice.forEach((d, di) => {
-      if (d.type !== "d6") return; // cube-specific flatten
       const o = di * 7;
       const last = this.#frames[total - 1];
-      if (last[o + 1] > DIE * 1.5) return; // stacked on another die — leave it
+      const restH = d.shape.inradius;
+      if (last[o + 1] > restH * 1.6) return; // stacked on another die — leave it
       q.set(last[o + 3], last[o + 4], last[o + 5], last[o + 6]);
-      const upness = Math.max(
-        Math.abs(axis.set(1, 0, 0).applyQuaternion(q).y),
-        Math.abs(axis.set(0, 1, 0).applyQuaternion(q).y),
-        Math.abs(axis.set(0, 0, 1).applyQuaternion(q).y),
-      );
-      if (upness >= 0.97) return; // already flat
-      // A random yaw so flattened dice don't look grid-aligned next to natural ones.
-      flat.setFromAxisAngle(axis.set(0, 1, 0), Math.random() * Math.PI * 2);
+      // The face that settled closest to pointing straight down.
+      let bestY = Infinity;
+      for (const n of d.shape.restNormals) {
+        axis.copy(n).applyQuaternion(q);
+        if (axis.y < bestY) {
+          bestY = axis.y;
+          bestN.copy(axis);
+        }
+      }
+      if (bestY <= -0.99) return; // already flat (within ~8°)
+      delta.setFromUnitVectors(bestN, DOWN);
+      flat.copy(delta).multiply(q);
       d.labelQuat.copy(relabelRotationFor(d.target, flat, d.shape));
       const start = Math.max(0, total - FLATTEN_TAIL);
       const s0 = this.#frames[start];
@@ -1033,7 +1100,7 @@ export class DiceScene {
         eased.copy(fromQ).slerp(flat, tt);
         const fr = this.#frames[f];
         fr[o] = fromX + (restX - fromX) * tt;
-        fr[o + 1] = fromY + (DIE / 2 - fromY) * tt;
+        fr[o + 1] = fromY + (restH - fromY) * tt;
         fr[o + 2] = fromZ + (restZ - fromZ) * tt;
         fr[o + 3] = eased.x;
         fr[o + 4] = eased.y;
@@ -1041,7 +1108,7 @@ export class DiceScene {
         fr[o + 6] = eased.w;
       }
       // Keep the body consistent with the flattened rest (for #settledValues).
-      d.body.position.set(restX, DIE / 2, restZ);
+      d.body.position.set(restX, restH, restZ);
       d.body.quaternion.set(flat.x, flat.y, flat.z, flat.w);
       d.body.velocity.setZero();
       d.body.angularVelocity.setZero();
@@ -1099,6 +1166,25 @@ export class DiceScene {
     this.#last = now;
     this.#surfTime += dt;
     this.#liquid.uTime.value = this.#surfTime;
+    for (const d of this.#dice) {
+      if (d.core.visible) d.coreMat.uniforms.uTime.value = this.#surfTime;
+    }
+    // Idle elemental churn is slow — render every 3rd frame (~20 fps) so the
+    // extra transmission pass stays cheap while the dice just sit there.
+    const churnOnly =
+      this.#phase === "idle" &&
+      this.#idleRenders <= 0 &&
+      !this.#surfaceActive() &&
+      this.#coresActive();
+    if (churnOnly && ++this.#coreFrame % 3 !== 0) {
+      this.#raf = requestAnimationFrame(this.#tick);
+      return;
+    }
+    // Shadow maps only re-render while dice are moving or after a tray/theme
+    // change — the churn and liquid ripples don't move any shadow caster.
+    this.#renderer.shadowMap.needsUpdate =
+      this.#phase !== "idle" || this.#shadowDirty;
+    if (this.#phase === "idle") this.#shadowDirty = false;
 
     if (this.#phase === "eject") {
       this.#ejectElapsed += dt * 1000;
@@ -1151,14 +1237,31 @@ export class DiceScene {
 
     this.#renderer.render(this.#scene, this.#camera);
 
-    // Keep animating while the liquid is still moving; otherwise idle out.
-    if (this.#phase === "idle" && !this.#surfaceActive()) {
-      if (this.#idleRenders-- <= 0) {
+    // Keep animating while the liquid is still moving or an elemental core is
+    // churning; otherwise idle out after the last requested static frames.
+    if (this.#phase === "idle") {
+      if (this.#idleRenders > 0) this.#idleRenders--;
+      else if (!this.#surfaceActive() && !this.#coresActive()) {
         this.#raf = 0;
         return;
       }
     }
     this.#raf = requestAnimationFrame(this.#tick);
+  };
+
+  /** Any die showing its animated elemental core? (Keeps the loop alive —
+   *  unless the user prefers reduced motion or the window is unfocused, then
+   *  the cores hold still on the last frame.) */
+  #coresActive(): boolean {
+    return (
+      !this.#reducedMotion &&
+      document.hasFocus() &&
+      this.#dice.some((d) => d.core.visible)
+    );
+  }
+
+  #onFocus = () => {
+    this.#requestStatic(); // restart the loop; churn resumes if cores are live
   };
 
   #start() {
@@ -1169,6 +1272,7 @@ export class DiceScene {
 
   /** Render a single frame (after theme/layout/resize changes while idle). */
   #requestStatic() {
+    this.#shadowDirty = true; // the dice/deck may have changed or moved
     if (this.#raf) return;
     this.#idleRenders = 2;
     this.#phase = "idle";
@@ -1181,6 +1285,13 @@ export class DiceScene {
     const w = parent?.clientWidth ?? canvas.clientWidth ?? 300;
     const h = parent?.clientHeight ?? canvas.clientHeight ?? 300;
     if (w === 0 || h === 0) return;
+    // Cap the framebuffer area: MSAA, the shadow/transmission passes, and fill
+    // rate all scale with it, and a big desktop window at dpr 2 burns GPU for
+    // no visible gain on felt + a handful of dice.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const budget = 2.4e6; // ~1550×1550 device pixels
+    const scale = Math.min(1, Math.sqrt(budget / (w * h * dpr * dpr)));
+    this.#renderer.setPixelRatio(dpr * scale);
     this.#renderer.setSize(w, h, false);
     this.#camera.aspect = w / h;
     this.#fitCamera();
@@ -1271,6 +1382,7 @@ export class DiceScene {
   }
 
   dispose() {
+    window.removeEventListener("focus", this.#onFocus);
     if (this.#raf) cancelAnimationFrame(this.#raf);
     this.#ro.disconnect();
     for (const d of [...this.#dice]) this.#removeDie(d);

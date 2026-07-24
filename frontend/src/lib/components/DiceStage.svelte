@@ -235,12 +235,7 @@
     style="--shake:{shake.intensity}"
   >
     {#if allNixie}
-      <NixieDice
-        {lastRoll}
-        diceCount={diceSet.length}
-        color={nixieColor}
-        {onSettled}
-      />
+      <NixieDice {lastRoll} {diceSet} color={nixieColor} {onSettled} />
     {:else if use3D && !failed}
       <canvas bind:this={canvas}></canvas>
     {:else}

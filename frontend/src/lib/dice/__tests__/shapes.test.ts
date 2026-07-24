@@ -112,6 +112,37 @@ describe("die shapes", () => {
     }
   });
 
+  it("exposes one outward unit rest-normal per face (flatten candidates)", () => {
+    const FACES: Record<DieType, number> = {
+      d4: 4,
+      d6: 6,
+      d8: 8,
+      d10: 10,
+      d12: 12,
+      d20: 20,
+    };
+    for (const t of ALL) {
+      const s = shapeFor(t);
+      expect(s.restNormals.length, t).toBe(FACES[t]);
+      for (const n of s.restNormals) {
+        expect(n.length(), t).toBeCloseTo(1, 5);
+      }
+      // Antipodal coverage: whatever way the die settles, some face normal must
+      // be able to point reasonably down (min over normals of n·down < -1/3 for
+      // any orientation ⇔ the normals cover the sphere coarsely; the tetra is
+      // the loosest at ≈ -0.49 worst-case). Spot-check random directions.
+      for (let i = 0; i < 50; i++) {
+        const dir = new THREE.Vector3(
+          Math.random() * 2 - 1,
+          Math.random() * 2 - 1,
+          Math.random() * 2 - 1,
+        ).normalize();
+        const best = Math.min(...s.restNormals.map((n) => n.dot(dir)));
+        expect(best, `${t} covers ${dir.toArray()}`).toBeLessThan(-1 / 3);
+      }
+    }
+  });
+
   it("builds geometry + collider without throwing", () => {
     for (const t of ALL) {
       const shape = shapeFor(t);
