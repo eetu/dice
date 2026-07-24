@@ -7,7 +7,11 @@ versions follow semver. Add entries under **[Unreleased]** as changes land —
 
 ## [Unreleased]
 
-<!-- Add changes here as they land. -->
+### Fixes
+
+- The win screen's glow is a clean centered spotlight (pure CSS) — the old
+  drifting blob wash read as a pointer glint stuck over the dark backdrop on
+  desktop, and cost a second canvas layer.
 
 ## [1.0.1] - 2026-07-24
 

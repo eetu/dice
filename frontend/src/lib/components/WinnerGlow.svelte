@@ -1,58 +1,47 @@
 <script lang="ts">
-  // A soft, warm mesh-gradient wash for the win screen — sits *behind* the ASCII
-  // Fireworks to give the celebration depth/colour without stealing focus from
-  // the winner + standings. Themed from the live halo accent (not a preset), kept
-  // low-opacity. igyb honours prefers-reduced-motion (a static frame) + auto-pause.
-  import {
-    darken,
-    gradientMesh,
-    lighten,
-    type Palette,
-  } from "@anarkisti/igyb/core";
-
+  // A soft, warm spotlight for the win screen — a fixed radial glow centered
+  // behind the trophy/title, breathing gently. Pure CSS on the live halo
+  // accent: symmetric and obviously deliberate (an igyb blob mesh here read as
+  // a pointer glint stuck over the frozen ambient backdrop), zero canvas/rAF
+  // cost, and it sits behind the ASCII Fireworks without stealing focus.
   import { theme } from "$lib/stores/theme.svelte";
 
-  let el = $state<HTMLDivElement>();
-  // Accent-over-near-black is punchier than accent-over-light-grey, so ease the
-  // wash back in dark to keep it a glow, not a flood.
-  const opacity = $derived(theme.resolved === "dark" ? 0.2 : 0.32);
-
-  function palette(): Palette {
-    const s = getComputedStyle(document.documentElement);
-    const accent = s.getPropertyValue("--halo-accent").trim() || "#e8853a";
-    const body = s.getPropertyValue("--halo-body").trim() || "#111";
-    // Drifting blobs in warm accent tones over the page body.
-    return {
-      bg: body,
-      fg: accent,
-      accents: [
-        accent,
-        lighten(accent, 0.32),
-        darken(accent, 0.22),
-        lighten(accent, 0.55),
-      ],
-    };
-  }
-
-  $effect(() => {
-    if (!el) return;
-    const bg = gradientMesh(el, { theme: palette, scale: 0.9, speed: 0.5 });
-    bg.start();
-    return () => bg.destroy();
-  });
+  // Accent-over-near-black is punchier than accent-over-light-grey, so ease
+  // the wash back in dark to keep it a glow, not a flood.
+  const opacity = $derived(theme.resolved === "dark" ? 0.5 : 0.8);
 </script>
 
-<div class="glow" bind:this={el} style:opacity aria-hidden="true"></div>
+<div class="glow" style:opacity aria-hidden="true"></div>
 
 <style>
-  /* Fills the whole viewport — behind the header/title and the page padding, but
-     above the die-face backdrop (it lives in the z-index:1 .page context, and -1
-     puts it at the back of that context). Opacity is set inline (theme-aware),
-     low enough that the winner name + standings stay the hero. */
+  /* Fills the viewport behind the win content (z-index:-1 within the page's
+     stacking context, above the die-face backdrop). Centered a touch above
+     mid-screen, roughly behind the trophy. */
   .glow {
     position: fixed;
     inset: 0;
     z-index: -1;
     pointer-events: none;
+    background: radial-gradient(
+      58% 52% at 50% 42%,
+      color-mix(in srgb, var(--halo-accent) 30%, transparent) 0%,
+      color-mix(in srgb, var(--halo-accent) 11%, transparent) 45%,
+      transparent 72%
+    );
+  }
+  /* A slow breath — transform only (compositor-friendly). */
+  @media (prefers-reduced-motion: no-preference) {
+    .glow {
+      animation: winner-breathe 3.4s ease-in-out infinite;
+    }
+  }
+  @keyframes winner-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.07);
+    }
   }
 </style>
