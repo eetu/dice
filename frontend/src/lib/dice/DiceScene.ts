@@ -16,7 +16,7 @@ import * as CANNON from "cannon-es";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
-import { type Deck, deckByName } from "./decks";
+import { type Deck, deckByName, type DeckMaterial } from "./decks";
 import { applyCoreTheme, makeCoreMaterial } from "./elemental";
 import { FACES, UP } from "./orient";
 import {
@@ -30,8 +30,8 @@ import { themeByName } from "./themes";
 
 /** One die to render: its type, material, the target value it must show,
  *  (for a d100's tens die) whether numerals display ×10 ("00".."90"), and
- *  `percentile` = part of a d100 pair (dot-marked to set it apart from a loose
- *  d10 on the table). */
+ *  `percentile` = part of a d100 pair (underlined numerals set it apart from a
+ *  loose d10 on the table). */
 export type RenderDie = {
   type: DieType;
   material: string;
@@ -105,17 +105,35 @@ function glyphFor(type: DieType, value: number, tens: boolean): string {
   return String(value);
 }
 
+/** Atlas key for a face numeral: the d100 pair's numerals carry an UNDERLINE
+ *  (baked into the glyph, flat on the face — like real percentile sets), which
+ *  is what tells the pair apart from a loose d10 on the same table. */
+function glyphKey(
+  type: DieType,
+  value: number,
+  tens: boolean,
+  percentile: boolean,
+): string {
+  const g = glyphFor(type, value, tens);
+  return percentile ? `_${g}` : g;
+}
+
 type GlyphAtlas = {
   texture: THREE.CanvasTexture;
   /** UV rect (flipY=false space, y down) for a glyph string. */
   cell: (glyph: string) => [number, number, number, number];
 };
 
-/** One shared canvas texture holding every numeral cell, built once per scene. */
+/** One shared canvas texture holding every numeral cell, built once per scene.
+ *  Cells keyed with a `_` prefix are the d100 pair's underlined variants. */
 function makeGlyphAtlas(): GlyphAtlas {
   const glyphs = new Set<string>();
   for (let n = 0; n <= 20; n++) glyphs.add(String(n));
-  for (let t = 0; t <= 9; t++) glyphs.add(String(t * 10).padStart(2, "0"));
+  for (let t = 0; t <= 9; t++) {
+    glyphs.add(String(t * 10).padStart(2, "0")); // tens faces 00..90
+    glyphs.add(`_${t}`); // underlined units 0..9
+    glyphs.add(`_${String(t * 10).padStart(2, "0")}`); // underlined tens
+  }
   const list = [...glyphs];
   const cols = 8;
   const rows = Math.ceil(list.length / cols);
@@ -128,13 +146,24 @@ function makeGlyphAtlas(): GlyphAtlas {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const index = new Map<string, number>();
-  list.forEach((g, i) => {
-    index.set(g, i);
+  list.forEach((key, i) => {
+    index.set(key, i);
     const col = i % cols;
     const row = Math.floor(i / cols);
+    const underline = key.startsWith("_");
+    const g = underline ? key.slice(1) : key;
+    const cx = col * cell + cell / 2;
+    // Underlined numerals sit a touch higher so glyph + bar center together.
+    const cy = row * cell + cell / 2 + (underline ? -4 : 4);
     // Two-digit glyphs get a slightly smaller font so they fit the cell.
-    ctx.font = `700 ${g.length > 1 ? 62 : 84}px ${"Space Grotesk, system-ui, sans-serif"}`;
-    ctx.fillText(g, col * cell + cell / 2, row * cell + cell / 2 + 4);
+    const size = g.length > 1 ? 62 : 84;
+    ctx.font = `700 ${size}px ${"Space Grotesk, system-ui, sans-serif"}`;
+    ctx.fillText(g, cx, cy);
+    if (underline) {
+      const w = ctx.measureText(g).width;
+      const y = cy + size * 0.52;
+      ctx.fillRect(cx - w / 2, y, w, 7);
+    }
   });
   const texture = new THREE.CanvasTexture(c);
   texture.flipY = false;
@@ -250,6 +279,127 @@ function makeFeltTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/** A deck material's surface detail: a near-white grayscale texture used both
+ *  as a colour map (multiplies the deck colour — so one texture serves oak AND
+ *  walnut) and as the bump map. */
+type Surface = { tex: THREE.CanvasTexture; bumpScale: number };
+
+/** Procedural surface detail per deck material — woodgrain planks, concrete
+ *  speckle, brushed steel. All patterns are drawn with integer wave counts /
+ *  pure noise so they tile seamlessly. Felt + water return null (felt keeps
+ *  its plain micro-noise bump; the liquid deck is a shader). */
+function makeSurface(material: DeckMaterial): Surface | null {
+  if (material === "felt" || material === "water") return null;
+  const size = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d")!;
+  const img = ctx.createImageData(size, size);
+  const set = (x: number, y: number, v: number) => {
+    const i = ((y & (size - 1)) * size + (x & (size - 1))) * 4;
+    const cl = Math.max(0, Math.min(255, v));
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = cl;
+    img.data[i + 3] = 255;
+  };
+  const TAU = Math.PI * 2;
+  let bumpScale: number;
+  let repeat: number;
+  if (material === "wood") {
+    // Real sawn wood: fine PARALLEL fibers (every row its own tone, slowly
+    // undulating along x) under long, gently drifting darker grain lines —
+    // no chevron waves. All wave counts are integers → seamless tiling.
+    const rowTone: number[] = [];
+    for (let y = 0; y < size; y++) {
+      rowTone.push(
+        234 +
+          9 * Math.sin((y / size) * TAU * 13) +
+          5 * Math.sin((y / size) * TAU * 37) +
+          (Math.random() * 10 - 5),
+      );
+    }
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const v =
+          rowTone[y] +
+          4 * Math.sin((x / size) * TAU * 2 + (y / size) * TAU * 3) +
+          (Math.random() * 5 - 2.5);
+        set(x, y, v);
+      }
+    }
+    // Dense short fiber flecks — the subtly lighter/darker dashes that give
+    // sawn oak its streaky sheen.
+    for (let k = 0; k < 900; k++) {
+      const y = Math.floor(Math.random() * size);
+      const x0 = Math.floor(Math.random() * size);
+      const len = 8 + Math.floor(Math.random() * 32);
+      const dv = (Math.random() - 0.45) * 22;
+      for (let dx = 0; dx < len; dx++) {
+        set(x0 + dx, y, rowTone[y] + dv + (Math.random() * 4 - 2));
+      }
+    }
+    // Long thin grain lines drifting only a few pixels across the tile.
+    for (let k = 0; k < 26; k++) {
+      const y0 = Math.random() * size;
+      const m = 1 + Math.floor(Math.random() * 2);
+      const amp = 1.5 + Math.random() * 3;
+      const phase = Math.random() * TAU;
+      const shade = 198 + Math.random() * 16;
+      const thick = Math.random() < 0.3 ? 2 : 1;
+      for (let x = 0; x < size; x++) {
+        const y = Math.round(y0 + amp * Math.sin((x / size) * TAU * m + phase));
+        for (let dy = 0; dy < thick; dy++) set(x, y + dy, shade);
+      }
+    }
+    bumpScale = 0.015;
+    repeat = 2;
+  } else if (material === "concrete") {
+    // Two-octave noise (coarse patches + fine grit), specks and dark pores.
+    const coarse: number[] = [];
+    const blocks = size / 8;
+    for (let i = 0; i < blocks * blocks; i++) coarse.push(Math.random());
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const cb = coarse[Math.floor(y / 8) * blocks + Math.floor(x / 8)];
+        set(x, y, 232 + cb * 12 + (Math.random() * 16 - 8));
+      }
+    }
+    for (let k = 0; k < 700; k++) {
+      const x = Math.floor(Math.random() * size);
+      const y = Math.floor(Math.random() * size);
+      set(x, y, 210 + Math.random() * 55);
+    }
+    for (let k = 0; k < 40; k++) {
+      // pores: small dark pits
+      const x = Math.floor(Math.random() * size);
+      const y = Math.floor(Math.random() * size);
+      set(x, y, 170);
+      set(x + 1, y, 185);
+      set(x, y + 1, 185);
+    }
+    bumpScale = 0.035;
+    repeat = 3;
+  } else {
+    // metal: brushed steel — fine horizontal strokes (constant per row wraps
+    // in x; row noise has no vertical structure to seam).
+    for (let y = 0; y < size; y++) {
+      const row = 230 + Math.random() * 18 + (Math.random() < 0.06 ? 8 : 0);
+      for (let x = 0; x < size; x++) {
+        set(x, y, row + (Math.random() * 6 - 3));
+      }
+    }
+    bumpScale = 0.005;
+    repeat = 3;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeat, repeat);
+  tex.anisotropy = 4;
+  // Used as a colour map too — near-white sRGB values barely darken the deck.
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return { tex, bumpScale };
+}
+
 type Die = {
   type: DieType;
   shape: DieShape;
@@ -264,8 +414,6 @@ type Die = {
   coreMat: THREE.ShaderMaterial;
   /** Pip/numeral material (tinted per die). */
   pipMat: THREE.MeshStandardMaterial;
-  /** Solid material for a d100's marker dots (undefined otherwise). */
-  markMat?: THREE.MeshStandardMaterial;
   /** Per-numeral plane geometries to dispose (empty for d6, which uses pips). */
   glyphGeos: THREE.BufferGeometry[];
   target: number;
@@ -292,10 +440,12 @@ export class DiceScene {
   #wallMat = new CANNON.Material("wall");
   #pipGeo = new THREE.CircleGeometry(DIE * 0.085, 20);
   #glyph = makeGlyphAtlas();
-  // The raised tray walls (recessed-table look); recoloured with the deck.
+  // The sunken tray: inner rim faces + the raised surround "tabletop" (a plane
+  // with a square hole). Both re-dressed with the deck (see #applyDeck).
   #walls: {
     geo: THREE.BufferGeometry[];
     mat: THREE.MeshStandardMaterial;
+    surround: THREE.MeshStandardMaterial;
   } | null = null;
   #rounded = true; // soft (rounded) dice bodies by default
   #coreFrame = 0; // frame counter for the reduced-rate idle elemental churn
@@ -337,6 +487,8 @@ export class DiceScene {
   // = a rippling wet surface (gated by uLiquid).
   #feltMat!: THREE.MeshStandardMaterial;
   #feltTex!: THREE.CanvasTexture;
+  // Per-material procedural detail (woodgrain / concrete / steel), lazy-built.
+  #surfaces = new Map<DeckMaterial, Surface | null>();
   #deckName = "felt-green";
   #liquid!: LiquidUniforms;
   #liquidDeck = false; // is the current deck the liquid one?
@@ -514,14 +666,17 @@ export class DiceScene {
       this.#world.addBody(body);
     }
 
-    // Raised felt walls at the boundary (±TRAY) → the play area reads as a
-    // recessed dice-tray, and a die resting against one clearly "stopped at the
-    // wall". Opaque, but the camera is steep enough that these short near-edge
-    // walls never occlude the dice. Colour follows the deck (see #applyDeck).
+    // A TRUE recess: the play floor sits sunken below the surrounding
+    // tabletop. The visible parts are the pit's inner rim faces (short boxes
+    // just OUTSIDE ±TRAY, slightly darker so the depth reads) and a raised
+    // surround plane with a square hole — the tabletop you look across into
+    // the pit. The near rim's outer face is what hides the front edge.
+    // Everything re-dresses with the deck (see #applyDeck).
     const wallH = 0.6;
     const th = 0.12;
-    const span = TRAY * 2 + th;
-    const wallGeo = [
+    const rim = TRAY + th; // outer edge of the rim boxes = the hole's edge
+    const span = rim * 2;
+    const wallGeo: THREE.BufferGeometry[] = [
       new THREE.BoxGeometry(th, wallH, span), // x-walls
       new THREE.BoxGeometry(span, wallH, th), // z-walls
     ];
@@ -531,10 +686,10 @@ export class DiceScene {
       metalness: 0,
     });
     const places: [THREE.BufferGeometry, number, number][] = [
-      [wallGeo[0], TRAY, 0],
-      [wallGeo[0], -TRAY, 0],
-      [wallGeo[1], 0, TRAY],
-      [wallGeo[1], 0, -TRAY],
+      [wallGeo[0], TRAY + th / 2, 0],
+      [wallGeo[0], -TRAY - th / 2, 0],
+      [wallGeo[1], 0, TRAY + th / 2],
+      [wallGeo[1], 0, -TRAY - th / 2],
     ];
     for (const [geo, x, z] of places) {
       const wall = new THREE.Mesh(geo, wallMat);
@@ -542,7 +697,41 @@ export class DiceScene {
       wall.receiveShadow = true;
       this.#scene.add(wall);
     }
-    this.#walls = { geo: wallGeo, mat: wallMat };
+    // The surround tabletop: SURF-sized square with the pit cut out, at rim
+    // height. Shares the deck's colour/detail via #applyDeck.
+    const outer = new THREE.Shape();
+    const half = SURF / 2;
+    outer.moveTo(-half, -half);
+    outer.lineTo(half, -half);
+    outer.lineTo(half, half);
+    outer.lineTo(-half, half);
+    const hole = new THREE.Path();
+    hole.moveTo(-rim, -rim);
+    hole.lineTo(rim, -rim);
+    hole.lineTo(rim, rim);
+    hole.lineTo(-rim, rim);
+    outer.holes.push(hole);
+    const surGeo = new THREE.ShapeGeometry(outer);
+    // ShapeGeometry UVs are in shape units — normalize to 0..1 across the
+    // surround so texture repeat matches the pit floor's scale.
+    {
+      const uv = surGeo.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) {
+        uv.setXY(i, (uv.getX(i) + half) / SURF, (uv.getY(i) + half) / SURF);
+      }
+    }
+    const surround = new THREE.MeshStandardMaterial({
+      color: 0x1f6b3a,
+      roughness: 0.95,
+      metalness: 0,
+    });
+    const sur = new THREE.Mesh(surGeo, surround);
+    sur.rotation.x = -Math.PI / 2;
+    sur.position.y = wallH;
+    sur.receiveShadow = true;
+    this.#scene.add(sur);
+    wallGeo.push(surGeo);
+    this.#walls = { geo: wallGeo, mat: wallMat, surround };
   }
 
   #makeDie(
@@ -582,7 +771,6 @@ export class DiceScene {
 
     const glyphGeos: THREE.BufferGeometry[] = [];
     let pipMat: THREE.MeshStandardMaterial;
-    let markMat: THREE.MeshStandardMaterial | undefined; // d100 dot marker
     if (type === "d6") {
       // Real pips (opposite faces sum to 7).
       pipMat = new THREE.MeshStandardMaterial({
@@ -618,42 +806,18 @@ export class DiceScene {
         alphaTest: 0.35,
       });
       const size = shape.radius * (type === "d4" ? 0.5 : 0.72);
-      // A d100 pair is marked with a small dot under each numeral — a shape cue
-      // (in the same contrast-safe pip colour, a SOLID material — pipMat carries
-      // the glyph atlas) so it reads apart from a loose d10 on any body.
-      const dotGeo = percentile
-        ? new THREE.CircleGeometry(size * 0.09, 16)
-        : null;
-      if (dotGeo) {
-        glyphGeos.push(dotGeo);
-        markMat = new THREE.MeshStandardMaterial({
-          color: theme.pip,
-          roughness: 0.55,
-        });
-      }
+      // A d100 pair renders UNDERLINED numerals (baked into the glyph — flat
+      // on the face, like real percentile sets), which is what sets the pair
+      // apart from a loose d10 on the same table.
       for (const p of shape.placements) {
         const { mesh: glyph, geo } = this.#glyphMesh(
-          glyphFor(type, p.value, tens),
+          glyphKey(type, p.value, tens, percentile),
           size,
           pipMat,
           p,
         );
         glyphGeos.push(geo);
         group.add(glyph);
-        if (dotGeo && markMat) {
-          const dot = new THREE.Mesh(dotGeo, markMat);
-          const n = p.normal.clone().normalize();
-          const up = p.up.clone().normalize();
-          const right = new THREE.Vector3().crossVectors(up, n).normalize();
-          dot.quaternion.setFromRotationMatrix(
-            new THREE.Matrix4().makeBasis(right, up, n),
-          );
-          dot.position
-            .copy(p.center)
-            .addScaledVector(n, 0.012)
-            .addScaledVector(up, -size * 0.5);
-          group.add(dot);
-        }
       }
     }
     this.#scene.add(group);
@@ -700,7 +864,6 @@ export class DiceScene {
       core,
       coreMat,
       pipMat,
-      markMat,
       glyphGeos,
       target: 1,
       material: "", // sentinel — #applyMaterial below does ALL the theming
@@ -745,7 +908,6 @@ export class DiceScene {
     die.bodyMat.dispose();
     die.coreMat.dispose();
     die.pipMat.dispose();
-    die.markMat?.dispose();
     this.#world.removeBody(die.body);
   }
 
@@ -813,7 +975,6 @@ export class DiceScene {
     die.core.visible = !!glass;
     if (glass) applyCoreTheme(die.coreMat, glass);
     die.pipMat.color.setHex(theme.pip);
-    die.markMat?.color.setHex(theme.pip);
     die.material = name;
   }
 
@@ -890,21 +1051,51 @@ export class DiceScene {
     this.#requestStatic();
   }
 
-  /** Apply a deck to the surface material: matte + bump for normal decks, or a
-   *  smooth wet rippling surface for the liquid deck. */
+  /** Lazily built + cached surface detail for a deck material. */
+  #surfaceFor(material: DeckMaterial): Surface | null {
+    if (!this.#surfaces.has(material)) {
+      this.#surfaces.set(material, makeSurface(material));
+    }
+    return this.#surfaces.get(material) ?? null;
+  }
+
+  /** Apply a deck to the surface material: matte + bump for normal decks (wood
+   *  grain / concrete speckle / brushed steel get a procedural detail map), or
+   *  a smooth wet rippling surface for the liquid deck. */
   #applyDeck(deck: Deck) {
     const liquid = !!deck.liquid;
     this.#liquidDeck = liquid;
     this.#feltMat.color.setHex(deck.color);
-    // Tray walls follow the deck, a touch darker so the recess reads with depth.
-    this.#walls?.mat.color.setHex(deck.color).multiplyScalar(0.62);
     this.#feltMat.roughness = liquid ? 0.14 : deck.roughness;
     this.#feltMat.metalness = liquid ? 0 : deck.metalness;
     this.#feltMat.envMapIntensity = liquid ? 1.4 : 1;
-    const nextBump = liquid ? null : this.#feltTex;
-    if (this.#feltMat.bumpMap !== nextBump) {
+    // Surface detail: the material's procedural texture multiplies the deck
+    // colour + drives the bump; felt keeps its plain micro-noise bump.
+    const surf = liquid ? null : this.#surfaceFor(deck.material);
+    const nextMap = surf?.tex ?? null;
+    const nextBump = liquid ? null : (surf?.tex ?? this.#feltTex);
+    this.#feltMat.bumpScale = surf?.bumpScale ?? 0.015;
+    if (this.#feltMat.map !== nextMap || this.#feltMat.bumpMap !== nextBump) {
+      this.#feltMat.map = nextMap;
       this.#feltMat.bumpMap = nextBump;
       this.#feltMat.needsUpdate = true; // adding/removing a map recompiles
+    }
+    // The pit dressing: rim inner faces a touch darker (that's the depth cue),
+    // the raised surround tabletop in the full deck look (never liquid-shiny —
+    // the water stays down in the pit).
+    if (this.#walls) {
+      const w = this.#walls;
+      w.mat.color.setHex(deck.color).multiplyScalar(0.62);
+      w.surround.color.setHex(deck.color);
+      w.surround.roughness = liquid ? 0.6 : deck.roughness;
+      w.surround.metalness = liquid ? 0 : deck.metalness;
+      w.surround.bumpScale = surf?.bumpScale ?? 0.015;
+      const sBump = liquid ? this.#feltTex : (surf?.tex ?? this.#feltTex);
+      if (w.surround.map !== nextMap || w.surround.bumpMap !== sBump) {
+        w.surround.map = liquid ? null : nextMap;
+        w.surround.bumpMap = sBump;
+        w.surround.needsUpdate = true;
+      }
     }
     this.#liquid.uLiquid.value = liquid ? 1 : 0;
     this.#liquid.uAccent.value.setHex(deck.crest ?? 0xf78f08);
@@ -1016,6 +1207,14 @@ export class DiceScene {
       let maxSpeed = 0;
       this.#dice.forEach((d, i) => {
         const b = d.body;
+        // A die wedged against a wall can pirouette on a pole/edge almost
+        // friction-free (convex hulls under-model rolling friction) — the
+        // classic "d10 spinning sideways forever". Once a die is barely
+        // translating but still spinning fast, brake the spin progressively
+        // so it winds down like a real die.
+        if (b.velocity.length() < 0.5 && b.angularVelocity.length() > 1.2) {
+          b.angularVelocity.scale(0.88, b.angularVelocity);
+        }
         const o = i * 7;
         snap[o] = b.position.x;
         snap[o + 1] = b.position.y;
@@ -1388,8 +1587,10 @@ export class DiceScene {
     for (const d of [...this.#dice]) this.#removeDie(d);
     this.#pipGeo.dispose();
     this.#glyph.texture.dispose();
+    for (const s of this.#surfaces.values()) s?.tex.dispose();
     this.#walls?.geo.forEach((g) => g.dispose());
     this.#walls?.mat.dispose();
+    this.#walls?.surround.dispose();
     this.#feltMat.dispose();
     this.#feltTex.dispose();
     this.#renderer.dispose();

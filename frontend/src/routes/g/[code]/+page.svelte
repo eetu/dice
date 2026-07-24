@@ -724,10 +724,17 @@
     width: 44px;
     height: 44px;
     background: var(--halo-bg-main);
+    /* Explicit icon colour — buttons otherwise inherit the UA default
+       (blue on mobile WebKit, near-invisible on the dark theme). */
+    color: var(--halo-text-main);
     border: 1px solid var(--halo-border);
     border-radius: 50%;
     font-size: 1.2rem;
     line-height: 1;
+  }
+  .dice-btn:hover {
+    color: var(--halo-accent);
+    border-color: var(--halo-accent);
   }
   .dice-btn:hover {
     border-color: var(--halo-accent);
