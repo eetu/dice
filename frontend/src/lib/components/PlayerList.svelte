@@ -237,12 +237,20 @@
   }
   input {
     flex: 1;
+    min-width: 0; /* allow shrink so a long name never widens the row */
     font: inherit;
     padding: 0.2em 0.4em;
     border: 1px solid var(--halo-accent);
     border-radius: var(--halo-radius-pill);
     background: var(--halo-bg-main);
     color: var(--halo-text-main);
+  }
+  /* The accent border already signals focus — replace the global offset outline
+     with a contained soft ring so it doesn't double-ring / overflow the row
+     (worst on the highlighted current-turn row). */
+  input:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--halo-accent-soft);
   }
   .edit {
     display: inline-flex;

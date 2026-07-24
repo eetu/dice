@@ -8,12 +8,22 @@ export type Player = {
   connected: boolean;
 };
 
+/** A polyhedral die type. Mirrors `room::DieKind`. `d100` is one tray slot that
+ *  rolls a single value 1..=100 (rendered as a tens + units d10 pair). */
+export type DieKind = "d4" | "d6" | "d8" | "d10" | "d12" | "d20" | "d100";
+
+/** One die in the free-mode tray (type + its own material). Mirrors `room::DieSpec`. */
+export type DieSpec = { kind: DieKind; material: string };
+
+/** One rolled die (type + value shown). Mirrors `room::RollDie`. */
+export type RollDie = { kind: DieKind; value: number };
+
 /** One completed roll. Mirrors `room::RollRecord`. */
 export type RollRecord = {
   id: number;
   playerId: string;
   playerName: string;
-  dice: number[];
+  dice: RollDie[];
   total: number;
   ts: number;
 };
@@ -28,8 +38,8 @@ export type Snapshot = {
   mode: Mode;
   turnIdx: number;
   currentPlayerId: string | null;
-  diceCount: number;
-  diceTheme: string;
+  /** The free-mode dice tray (ordered typed dice with per-die material). */
+  diceSet: DieSpec[];
   deck: string;
   history: RollRecord[];
 };
@@ -170,9 +180,8 @@ export type ServerMsg =
 export type ClientMsg =
   | { type: "roll" }
   | { type: "reorder"; order: string[] }
-  | { type: "setDiceCount"; count: number }
+  | { type: "setDiceSet"; dice: DieSpec[] }
   | { type: "setName"; name: string }
-  | { type: "setDiceTheme"; theme: string }
   | { type: "setDeck"; deck: string }
   | { type: "skipTurn" }
   | { type: "setMode"; mode: Mode }

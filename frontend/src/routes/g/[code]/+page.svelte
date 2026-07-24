@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dices from "@lucide/svelte/icons/dices";
   import QrCode from "@lucide/svelte/icons/qr-code";
   import Settings from "@lucide/svelte/icons/settings";
   import { onMount } from "svelte";
@@ -6,15 +7,21 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
-  import { api, ApiError, type Mode, type YatzyCat } from "$lib/api";
+  import {
+    api,
+    ApiError,
+    type DieSpec,
+    type Mode,
+    type YatzyCat,
+  } from "$lib/api";
   import DiceStage from "$lib/components/DiceStage.svelte";
+  import DiceTray from "$lib/components/DiceTray.svelte";
   import FarkleBoard from "$lib/components/FarkleBoard.svelte";
   import LangToggle from "$lib/components/LangToggle.svelte";
   import LiarsBoard from "$lib/components/LiarsBoard.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import PlayerList from "$lib/components/PlayerList.svelte";
   import RollHistory from "$lib/components/RollHistory.svelte";
-  import Select from "$lib/components/Select.svelte";
   import SharePanel from "$lib/components/SharePanel.svelte";
   import Switch from "$lib/components/Switch.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
@@ -22,8 +29,6 @@
   import Toolbar from "$lib/components/Toolbar.svelte";
   import Wordmark from "$lib/components/Wordmark.svelte";
   import YatzyBoard from "$lib/components/YatzyBoard.svelte";
-  import { DECKS } from "$lib/dice/decks";
-  import { THEMES } from "$lib/dice/themes";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
   import { farkle } from "$lib/stores/farkle.svelte";
@@ -42,6 +47,7 @@
   >("connecting");
   let myId = $state<string | null>(null);
   let showSettings = $state(false);
+  let showDiceTray = $state(false); // the free-mode dice-tray builder
   let showShareModal = $state(false); // header code → share panel (all modes)
   let confirmLeave = $state(false); // leaving is destructive — confirm first
   let nameDraft = $state(""); // the name-prompt input (QR/link join, no stored name)
@@ -66,19 +72,6 @@
         : mode === "farkle"
           ? !!farkle.view?.over
           : false,
-  );
-  // Options with translated labels for the Select dropdowns.
-  const themeOptions = $derived(
-    THEMES.map((t) => ({
-      name: t.name,
-      label: i18n.m.themes[t.name] ?? t.label,
-    })),
-  );
-  const deckOptions = $derived(
-    DECKS.map((d) => ({
-      name: d.name,
-      label: i18n.m.decks[d.name] ?? d.label,
-    })),
   );
   // The socket concluded the room is gone (server restart / expired) — surface
   // it instead of reconnecting forever.
@@ -156,14 +149,11 @@
   function roll() {
     if (isMyTurn && !game.rolling) socket.send({ type: "roll" });
   }
-  function setDice(count: number) {
-    socket.send({ type: "setDiceCount", count });
+  function setDiceSet(dice: DieSpec[]) {
+    socket.send({ type: "setDiceSet", dice });
   }
   function skip() {
     socket.send({ type: "skipTurn" });
-  }
-  function setDiceTheme(theme: string) {
-    socket.send({ type: "setDiceTheme", theme });
   }
   function setDeck(deck: string) {
     socket.send({ type: "setDeck", deck });
@@ -355,14 +345,19 @@
           <div class="stage-face">
             <DiceStage
               lastRoll={game.lastRoll}
-              diceCount={snap.diceCount}
-              diceTheme={snap.diceTheme}
+              diceSet={snap.diceSet}
               deck={snap.deck}
               canRoll={isMyTurn && !game.rolling}
               rolling={game.rolling}
               onRoll={roll}
               onSettled={() => game.endRoll()}
             />
+            <button
+              class="dice-btn"
+              onclick={() => (showDiceTray = true)}
+              aria-label={i18n.m.dice}
+              title={i18n.m.dice}><Dices size={18} /></button
+            >
             {#if currentPlayer}
               <div class="turn-overlay" class:mine={isMyTurn}>
                 {isMyTurn ? i18n.m.yourTurn : currentPlayer.name}
@@ -443,36 +438,8 @@
           </button>
         </div>
       </div>
-      {#if mode === "free"}
-        <div class="setting">
-          <span>{i18n.m.diceCount}</span>
-          <div class="stepper">
-            <button
-              aria-label={i18n.m.fewer}
-              onclick={() => setDice(snap.diceCount - 1)}
-              disabled={snap.diceCount <= 1}>−</button
-            >
-            <span class="count">{snap.diceCount}</span>
-            <button
-              aria-label={i18n.m.more}
-              onclick={() => setDice(snap.diceCount + 1)}
-              disabled={snap.diceCount >= 8}>+</button
-            >
-          </div>
-        </div>
-        <Select
-          label={i18n.m.diceSelectLabel}
-          value={snap.diceTheme}
-          options={themeOptions}
-          onChange={setDiceTheme}
-        />
-        <Select
-          label={i18n.m.tableSelectLabel}
-          value={snap.deck}
-          options={deckOptions}
-          onChange={setDeck}
-        />
-      {/if}
+      <!-- Free-mode dice (types + per-die material) and the table surface live
+        together in the Dice tray on the stage, not here. -->
       <div class="setting-col">
         <span>{i18n.m.appearance}</span>
         <ThemeToggle />
@@ -510,6 +477,22 @@
   >
     <SharePanel {code} />
   </Modal>
+
+  {#if snap}
+    <Modal
+      open={showDiceTray}
+      label={i18n.m.dice}
+      onClose={() => (showDiceTray = false)}
+    >
+      <DiceTray
+        diceSet={snap.diceSet}
+        deck={snap.deck}
+        max={8}
+        onChange={setDiceSet}
+        onDeckChange={setDeck}
+      />
+    </Modal>
+  {/if}
 
   <Modal
     open={confirmLeave}
@@ -704,29 +687,25 @@
     border-color: var(--halo-accent);
     font-weight: 600;
   }
-  .stepper {
-    display: flex;
+  /* The dice-tray opener — top-right of the felt (mirrors Farkle's ? button). */
+  .dice-btn {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    z-index: 2;
+    display: inline-flex;
     align-items: center;
-    gap: 0.6rem;
-  }
-  .stepper button {
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: var(--halo-radius);
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    background: var(--halo-bg-main);
     border: 1px solid var(--halo-border);
-    background: var(--halo-bg-light);
-    color: var(--halo-text-main);
+    border-radius: 50%;
     font-size: 1.2rem;
     line-height: 1;
   }
-  .stepper button:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-  .stepper .count {
-    min-width: 1.5rem;
-    text-align: center;
-    color: var(--halo-text-main);
+  .dice-btn:hover {
+    border-color: var(--halo-accent);
   }
 
   /* The felt fills the stage column above the toolbar; the turn overlay sits on

@@ -154,7 +154,7 @@ fn restrict_perms(_f: &fs::File) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::room::{new_rooms, ClientMsg, Room, YatzyCat};
+    use crate::room::{new_rooms, ClientMsg, DieKind, DieSpec, Room, YatzyCat};
 
     fn tmp_file(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -173,7 +173,17 @@ mod tests {
         let (id, token) = {
             let mut room = Room::new("ABC12".into(), 8);
             let (id, token) = room.add_player("Alice".into());
-            room.dice_theme = "obsidian".into();
+            // A mixed tray with per-die materials must survive the round trip.
+            room.dice_set = vec![
+                DieSpec {
+                    kind: DieKind::D20,
+                    material: "obsidian".into(),
+                },
+                DieSpec {
+                    kind: DieKind::D6,
+                    material: "ruby".into(),
+                },
+            ];
             rooms
                 .lock()
                 .unwrap()
@@ -192,7 +202,10 @@ mod tests {
 
         let map = restored.lock().unwrap();
         let room = map.get("ABC12").expect("room restored").lock().unwrap();
-        assert_eq!(room.dice_theme, "obsidian");
+        assert_eq!(room.dice_set.len(), 2);
+        assert_eq!(room.dice_set[0].kind, DieKind::D20);
+        assert_eq!(room.dice_set[0].material, "obsidian");
+        assert_eq!(room.dice_set[1].material, "ruby");
         // The secret token survived → a reconnecting client re-authenticates.
         assert_eq!(
             room.player_id_for_token(&token).as_deref(),

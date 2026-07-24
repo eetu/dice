@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  import type { RollRecord } from "$lib/api";
+  import type { DieSpec, RollRecord } from "$lib/api";
   import { DiceScene, type HoverInfo } from "$lib/dice/DiceScene";
   import { themeByName } from "$lib/dice/themes";
   import { i18n } from "$lib/i18n/i18n.svelte";
@@ -12,27 +12,27 @@
 
   type Props = {
     lastRoll: RollRecord | null;
-    diceCount: number;
-    diceTheme: string;
+    diceSet: DieSpec[];
     deck: string;
     canRoll: boolean;
     rolling: boolean;
     onRoll: () => void;
     onSettled?: () => void;
   };
-  let {
-    lastRoll,
-    diceCount,
-    diceTheme,
-    deck,
-    canRoll,
-    rolling,
-    onRoll,
-    onSettled,
-  }: Props = $props();
+  let { lastRoll, diceSet, deck, canRoll, rolling, onRoll, onSettled }: Props =
+    $props();
 
-  const theme = $derived(themeByName(diceTheme));
-  const isNixie = $derived(!!theme.nixie);
+  // Render branch chosen from the tray: all-nixie → glowing tubes; all-d6
+  // (non-nixie) → the 3D physics cube scene; anything else (polyhedra — until the
+  // polyhedral 3D engine lands) → a numeric token grid.
+  const allNixie = $derived(
+    diceSet.length > 0 && diceSet.every((d) => d.material === "nixie"),
+  );
+  const allD6 = $derived(
+    diceSet.length > 0 && diceSet.every((d) => d.kind === "d6"),
+  );
+  const use3D = $derived(allD6 && !allNixie);
+  const nixieColor = $derived(themeByName("nixie").nixieColor ?? "#ff6a12");
 
   let canvas = $state<HTMLCanvasElement>();
   let scene: DiceScene | null = null;
@@ -47,9 +47,10 @@
   let lastTrigger = 0;
   let hover = $state<HoverInfo | null>(null);
 
-  // Create / destroy the 3D scene as the mode toggles (nixie has no 3D scene).
+  // Create / destroy the 3D scene as the render branch toggles (only the all-d6
+  // cube tray uses it for now).
   $effect(() => {
-    if (isNixie) {
+    if (!use3D) {
       scene?.dispose();
       scene = null;
       return;
@@ -63,14 +64,12 @@
               : diceAudio.clack(s, material, t),
           onSettled: () => onSettled?.(),
         });
-        scene.setTheme(diceTheme);
         scene.setDeck(deck);
-        scene.setDiceCount(diceCount);
+        scene.setDice(diceSet);
         seenRollId = lastRoll?.id ?? -1;
-        // Restore the last result (e.g. switching back from nixie) instead of
-        // resetting to face 1.
-        if (lastRoll && lastRoll.dice.length === diceCount) {
-          scene.showValues(lastRoll.dice);
+        // Restore the last result (e.g. switching back) instead of face 1.
+        if (lastRoll && lastRoll.dice.length === diceSet.length) {
+          scene.showValues(lastRoll.dice.map((d) => d.value));
         }
       } catch (e) {
         console.error("dice scene init failed", e);
@@ -80,23 +79,19 @@
   });
 
   $effect(() => {
-    const t = diceTheme;
-    if (scene) scene.setTheme(t);
-  });
-  $effect(() => {
     const d = deck;
     if (scene) scene.setDeck(d);
   });
   $effect(() => {
-    const n = diceCount;
-    if (scene) scene.setDiceCount(n);
+    const set = diceSet;
+    if (scene) scene.setDice(set);
   });
   $effect(() => {
     const r = lastRoll;
     if (scene && r && r.id !== seenRollId) {
       seenRollId = r.id;
       hover = null;
-      scene.roll(r.dice);
+      scene.roll(r.dice.map((d) => d.value));
     }
   });
 
@@ -172,7 +167,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class="stage halo-card"
-  data-dice-theme={diceTheme}
+  data-dice-theme={diceSet[0]?.material ?? "ivory"}
   role={canRoll ? "button" : undefined}
   tabindex={canRoll ? 0 : undefined}
   class:rollable={canRoll}
@@ -196,25 +191,33 @@
     class:shaking={shake.shaking}
     style="--shake:{shake.intensity}"
   >
-    {#if isNixie}
+    {#if allNixie}
       <NixieDice
         {lastRoll}
-        {diceCount}
-        color={theme.nixieColor ?? "#ff6a12"}
+        diceCount={diceSet.length}
+        color={nixieColor}
         {onSettled}
       />
-    {:else if failed}
+    {:else if use3D && !failed}
+      <canvas bind:this={canvas}></canvas>
+    {:else}
+      <!-- Numeric token grid: any polyhedral tray (until the 3D polyhedra land),
+        and the WebGL-unavailable / automated fallback. Shows each die's value
+        with its kind tag. -->
       <div class="fallback">
         {#if lastRoll}
           <div class="nums">
-            {#each lastRoll.dice as d, i (i)}<span>{d}</span>{/each}
+            {#each lastRoll.dice as d, i (i)}
+              <span class="tok" data-kind={d.kind}>
+                <b>{d.value}</b>
+                <em>{d.kind}</em>
+              </span>
+            {/each}
           </div>
         {:else}
           <p class="muted">{i18n.m.diceFallback}</p>
         {/if}
       </div>
-    {:else}
-      <canvas bind:this={canvas}></canvas>
     {/if}
   </div>
 
@@ -347,9 +350,14 @@
   }
   .nums {
     display: flex;
-    gap: 1rem;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    justify-content: center;
+    max-width: 90%;
   }
-  .nums span {
+  /* One token per die: the value big, the die kind as a small tag. */
+  .tok {
+    position: relative;
     display: grid;
     place-items: center;
     width: 4rem;
@@ -358,8 +366,20 @@
     border-radius: 12px;
     box-shadow: var(--halo-shadow);
     font-family: var(--halo-font-heading);
+  }
+  .tok b {
     font-size: 2rem;
     font-weight: 600;
+    line-height: 1;
+  }
+  .tok em {
+    position: absolute;
+    bottom: 0.25rem;
+    font-style: normal;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--halo-accent);
   }
   .muted {
     color: var(--halo-text-muted);

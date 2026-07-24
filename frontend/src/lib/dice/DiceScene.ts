@@ -17,6 +17,8 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 
+import type { DieSpec } from "$lib/api";
+
 import { type Deck, deckByName } from "./decks";
 import { FACES, labelQuatFor, shownUpValue, UP } from "./orient";
 import { themeByName } from "./themes";
@@ -183,6 +185,8 @@ type Die = {
   bodyMat: THREE.MeshPhysicalMaterial;
   pipMat: THREE.MeshStandardMaterial;
   target: number;
+  /** This die's material (theme slug) — dice in a tray can differ. */
+  material: string;
   /** Constant per-roll relabel so the settled face reads as `target`. */
   labelQuat: THREE.Quaternion;
 };
@@ -400,8 +404,8 @@ export class DiceScene {
     }
   }
 
-  #makeDie(): Die {
-    const theme = themeByName(this.#themeName);
+  #makeDie(material = this.#themeName): Die {
+    const theme = themeByName(material);
     const group = new THREE.Group();
     const bodyMat = new THREE.MeshPhysicalMaterial({
       color: theme.body,
@@ -477,6 +481,7 @@ export class DiceScene {
       bodyMat,
       pipMat,
       target: 1,
+      material,
       labelQuat: new THREE.Quaternion(),
     };
   }
@@ -492,14 +497,40 @@ export class DiceScene {
     this.#world.removeBody(die.body);
   }
 
-  setDiceCount(n: number) {
+  /** Reconcile the tray to `specs` (count + per-die material). Adding/removing a
+   *  die re-lays-out; a pure material change recolors in place (so a rename /
+   *  presence Sync doesn't wipe the shown result back to face 1). */
+  setDice(specs: DieSpec[]) {
+    const n = Math.max(1, Math.min(12, specs.length));
+    const countChanged = n !== this.#dice.length;
+    while (this.#dice.length < n) {
+      this.#dice.push(this.#makeDie(specs[this.#dice.length]?.material));
+    }
+    while (this.#dice.length > n) this.#removeDie(this.#dice.pop()!);
+    // Apply each die's material (cheap; only touches colors/PBR params).
+    this.#dice.forEach((d, i) => this.#applyMaterial(d, specs[i]?.material));
+    if (countChanged && this.#phase === "idle") this.#layoutIdle();
+    else this.#requestStatic();
+  }
+
+  /** Grow/shrink the die count only (materials are managed by `setDice`) — used
+   *  by `roll`/`showValues`, which set positions themselves. */
+  #ensureCount(n: number) {
     n = Math.max(1, Math.min(12, n));
-    // No-op if unchanged — a rename/presence Sync must NOT re-layout the dice
-    // (which would wipe the shown result back to face 1).
-    if (n === this.#dice.length) return;
     while (this.#dice.length < n) this.#dice.push(this.#makeDie());
     while (this.#dice.length > n) this.#removeDie(this.#dice.pop()!);
-    if (this.#phase === "idle") this.#layoutIdle();
+  }
+
+  /** Recolor one die to a material (theme slug); no-op if already applied. */
+  #applyMaterial(die: Die, name = "ivory") {
+    if (die.material === name) return;
+    const theme = themeByName(name);
+    die.bodyMat.color.setHex(theme.body);
+    die.bodyMat.metalness = theme.metalness;
+    die.bodyMat.roughness = theme.roughness;
+    die.bodyMat.clearcoat = theme.clearcoat;
+    die.pipMat.color.setHex(theme.pip);
+    die.material = name;
   }
 
   /** Tidy centered grid of rest positions that fits inside the tray. A single
@@ -531,20 +562,6 @@ export class DiceScene {
       d.body.position.set(x, DIE / 2, z);
       d.body.quaternion.set(0, 0, 0, 1);
     });
-    this.#requestStatic();
-  }
-
-  setTheme(name: string) {
-    if (name === this.#themeName) return;
-    this.#themeName = name;
-    const theme = themeByName(name);
-    for (const d of this.#dice) {
-      d.bodyMat.color.setHex(theme.body);
-      d.bodyMat.metalness = theme.metalness;
-      d.bodyMat.roughness = theme.roughness;
-      d.bodyMat.clearcoat = theme.clearcoat;
-      d.pipMat.color.setHex(theme.pip);
-    }
     this.#requestStatic();
   }
 
@@ -617,7 +634,7 @@ export class DiceScene {
    *  (re)created after a theme switch so it restores the last result instead of
    *  resetting to face 1. Positions reset to the tidy row; only the faces matter. */
   showValues(values: number[]) {
-    this.setDiceCount(values.length);
+    this.#ensureCount(values.length);
     const identity = new THREE.Quaternion();
     const pos = this.#restPositions();
     this.#dice.forEach((d, i) => {
@@ -635,7 +652,7 @@ export class DiceScene {
 
   /** Throw the dice; they tumble and settle showing `targets` (1..6 each). */
   roll(targets: number[]) {
-    this.setDiceCount(targets.length);
+    this.#ensureCount(targets.length);
 
     // Random throw for each die.
     this.#dice.forEach((d, i) => {

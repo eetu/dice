@@ -508,11 +508,14 @@
   .wrap {
     opacity: 0.45;
   }
+  /* Both the literal bid-face matches (.hit) and wild 1s (.wild) count toward the
+     tally, so ring them the same way — otherwise a count made up of wild 1s reads
+     as "only the 1s are highlighted". */
   .wrap.hit,
   .wrap.wild {
     opacity: 1;
   }
-  /* A 1 counting as a wild for the bid face. */
+  .wrap.hit .die,
   .wrap.wild .die {
     box-shadow: inset 0 0 0 2px var(--halo-accent);
   }

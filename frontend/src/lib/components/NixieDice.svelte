@@ -32,7 +32,7 @@
       });
       if (lastRoll && lastRoll.dice.length === diceCount) {
         seen = lastRoll.id;
-        scene.setDigits(lastRoll.dice.map(String));
+        scene.setDigits(lastRoll.dice.map((d) => String(d.value)));
       } else {
         scene.setDigits(Array(diceCount).fill(""));
       }
@@ -63,7 +63,7 @@
     const r = lastRoll;
     if (scene && r && r.id !== seen) {
       seen = r.id;
-      spin(r.dice.map(String));
+      spin(r.dice.map((d) => String(d.value)));
     }
   });
 

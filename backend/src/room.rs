@@ -56,6 +56,53 @@ pub struct Player {
     pub connected: bool,
 }
 
+/// A polyhedral die type. `camelCase` → "d4".."d100" on the wire. `d100` is a
+/// single tray slot that rolls one value 1..=100 (the client renders it as a
+/// tens + units d10 pair); it counts as one die against `max_dice`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DieKind {
+    D4,
+    D6,
+    D8,
+    D10,
+    D12,
+    D20,
+    D100,
+}
+
+impl DieKind {
+    /// Highest face value and the uniform roll ceiling (values are 1..=sides).
+    fn sides(self) -> u32 {
+        match self {
+            DieKind::D4 => 4,
+            DieKind::D6 => 6,
+            DieKind::D8 => 8,
+            DieKind::D10 => 10,
+            DieKind::D12 => 12,
+            DieKind::D20 => 20,
+            DieKind::D100 => 100,
+        }
+    }
+}
+
+/// One die in the free-mode tray: a type + its own material (theme slug), so a
+/// mixed tray (e.g. 1d20 + 2d6) can carry per-die materials.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DieSpec {
+    pub kind: DieKind,
+    pub material: String,
+}
+
+/// One rolled die in a history record: its type + the value shown (1..=sides).
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RollDie {
+    pub kind: DieKind,
+    pub value: u32,
+}
+
 /// One completed roll, kept in the room's history for its lifetime.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,8 +110,8 @@ pub struct RollRecord {
     pub id: u64,
     pub player_id: String,
     pub player_name: String,
-    /// Face values, each 1..=6.
-    pub dice: Vec<u8>,
+    /// Each rolled die (type + value). Free-mode only.
+    pub dice: Vec<RollDie>,
     pub total: u32,
     /// Unix milliseconds.
     pub ts: i64,
@@ -283,8 +330,9 @@ pub struct Snapshot {
     pub mode: Mode,
     pub turn_idx: usize,
     pub current_player_id: Option<String>,
-    pub dice_count: u8,
-    pub dice_theme: String,
+    /// The free-mode dice tray: an ordered list of typed dice with per-die
+    /// material. Replaces the old single count + room-wide theme.
+    pub dice_set: Vec<DieSpec>,
     pub deck: String,
     pub history: Vec<RollRecord>,
 }
@@ -332,14 +380,14 @@ pub enum ClientMsg {
     Reorder {
         order: Vec<String>,
     },
-    SetDiceCount {
-        count: u8,
+    /// Replace the whole free-mode dice tray (ordered). Clamped to `max_dice`,
+    /// each material sanitized; an unknown `kind` fails to deserialize and the
+    /// message is dropped at the ws layer.
+    SetDiceSet {
+        dice: Vec<DieSpec>,
     },
     SetName {
         name: String,
-    },
-    SetDiceTheme {
-        theme: String,
     },
     /// Change the table (deck) material, room-wide.
     SetDeck {
@@ -741,7 +789,7 @@ impl FarkleState {
 /// On-disk schema version for the persisted state file. Bump on ANY incompatible
 /// change to `PersistedRoom` (or a type it embeds) so a stale file written by an
 /// older build is discarded rather than mis-deserialized — see `crate::persist`.
-pub(crate) const PERSIST_VERSION: u32 = 1;
+pub(crate) const PERSIST_VERSION: u32 = 2;
 
 /// A room flattened for persistence — the durable half of [`Room`]. Excludes the
 /// live-only bits: the `broadcast::Sender` (recreated on load, fresh with no
@@ -756,8 +804,7 @@ pub(crate) struct PersistedRoom {
     players: Vec<PersistedPlayer>,
     mode: Mode,
     turn_idx: usize,
-    dice_count: u8,
-    dice_theme: String,
+    dice_set: Vec<DieSpec>,
     deck: String,
     history: Vec<RollRecord>,
     roll_seq: u64,
@@ -780,8 +827,7 @@ pub struct Room {
     pub players: Vec<Player>,
     pub mode: Mode,
     pub turn_idx: usize,
-    pub dice_count: u8,
-    pub dice_theme: String,
+    pub dice_set: Vec<DieSpec>,
     pub deck: String,
     pub history: Vec<RollRecord>,
     pub tx: broadcast::Sender<ServerMsg>,
@@ -801,8 +847,17 @@ impl Room {
             players: Vec::new(),
             mode: Mode::Free,
             turn_idx: 0,
-            dice_count: 2,
-            dice_theme: "ivory".into(),
+            // Default tray: two ivory d6 (preserves the original free-mode feel).
+            dice_set: vec![
+                DieSpec {
+                    kind: DieKind::D6,
+                    material: "ivory".into(),
+                },
+                DieSpec {
+                    kind: DieKind::D6,
+                    material: "ivory".into(),
+                },
+            ],
             deck: "felt-green".into(),
             history: Vec::new(),
             tx,
@@ -830,8 +885,7 @@ impl Room {
                 .collect(),
             mode: self.mode,
             turn_idx: self.turn_idx,
-            dice_count: self.dice_count,
-            dice_theme: self.dice_theme.clone(),
+            dice_set: self.dice_set.clone(),
             deck: self.deck.clone(),
             history: self.history.clone(),
             roll_seq: self.roll_seq,
@@ -861,8 +915,7 @@ impl Room {
                 .collect(),
             mode: p.mode,
             turn_idx: p.turn_idx,
-            dice_count: p.dice_count,
-            dice_theme: p.dice_theme,
+            dice_set: p.dice_set,
             deck: p.deck,
             history: p.history,
             tx,
@@ -916,8 +969,7 @@ impl Room {
             mode: self.mode,
             turn_idx: self.turn_idx,
             current_player_id: self.current_player_id(),
-            dice_count: self.dice_count,
-            dice_theme: self.dice_theme.clone(),
+            dice_set: self.dice_set.clone(),
             deck: self.deck.clone(),
             history: self.history.clone(),
         }
@@ -1004,8 +1056,24 @@ impl Room {
         match msg {
             ClientMsg::Roll => self.roll(actor_id),
             ClientMsg::Reorder { order } => self.reorder(order),
-            ClientMsg::SetDiceCount { count } => {
-                self.dice_count = count.clamp(1, self.max_dice);
+            ClientMsg::SetDiceSet { dice } => {
+                // Clamp the tray length to the room cap, sanitize each material,
+                // and never allow an empty tray (fall back to one d6).
+                let mut set: Vec<DieSpec> = dice
+                    .into_iter()
+                    .take(self.max_dice as usize)
+                    .map(|d| DieSpec {
+                        kind: d.kind,
+                        material: sanitize_theme(d.material),
+                    })
+                    .collect();
+                if set.is_empty() {
+                    set.push(DieSpec {
+                        kind: DieKind::D6,
+                        material: "ivory".into(),
+                    });
+                }
+                self.dice_set = set;
                 self.broadcast_sync();
             }
             ClientMsg::SetName { name } => {
@@ -1020,10 +1088,6 @@ impl Room {
                         rec.player_name = clean.clone();
                     }
                 }
-                self.broadcast_sync();
-            }
-            ClientMsg::SetDiceTheme { theme } => {
-                self.dice_theme = sanitize_theme(theme);
                 self.broadcast_sync();
             }
             ClientMsg::SetDeck { deck } => {
@@ -1057,10 +1121,16 @@ impl Room {
             return;
         }
         let mut rng = rand::rng();
-        let dice: Vec<u8> = (0..self.dice_count)
-            .map(|_| rng.random_range(1..=6))
+        // Each tray die rolls uniformly in 1..=sides for its type (d100 → 1..=100).
+        let dice: Vec<RollDie> = self
+            .dice_set
+            .iter()
+            .map(|spec| RollDie {
+                kind: spec.kind,
+                value: rng.random_range(1..=spec.kind.sides()),
+            })
             .collect();
-        let total: u32 = dice.iter().map(|&d| d as u32).sum();
+        let total: u32 = dice.iter().map(|d| d.value).sum();
         self.roll_seq += 1;
         let player_name = self
             .players
@@ -1884,26 +1954,123 @@ mod tests {
         assert_eq!(room.current_player_id().as_deref(), Some(id[1].as_str()));
     }
 
+    /// A tray of `n` dice of one kind, all ivory.
+    fn tray(kind: DieKind, n: usize) -> Vec<DieSpec> {
+        (0..n)
+            .map(|_| DieSpec {
+                kind,
+                material: "ivory".into(),
+            })
+            .collect()
+    }
+
     #[test]
     fn roll_produces_valid_faces() {
         let mut room = room_with(1);
         let id = ids(&room);
-        room.apply(&id[0], ClientMsg::SetDiceCount { count: 5 });
+        room.apply(
+            &id[0],
+            ClientMsg::SetDiceSet {
+                dice: tray(DieKind::D6, 5),
+            },
+        );
         room.apply(&id[0], ClientMsg::Roll);
         let rec = &room.history[0];
         assert_eq!(rec.dice.len(), 5);
-        assert!(rec.dice.iter().all(|&d| (1..=6).contains(&d)));
-        assert_eq!(rec.total, rec.dice.iter().map(|&d| d as u32).sum::<u32>());
+        assert!(rec.dice.iter().all(|d| (1..=6).contains(&d.value)));
+        assert_eq!(rec.total, rec.dice.iter().map(|d| d.value).sum::<u32>());
     }
 
     #[test]
-    fn dice_count_clamped() {
+    fn dice_set_clamped_and_never_empty() {
         let mut room = room_with(1);
         let id = ids(&room);
-        room.apply(&id[0], ClientMsg::SetDiceCount { count: 99 });
-        assert_eq!(room.dice_count, 8);
-        room.apply(&id[0], ClientMsg::SetDiceCount { count: 0 });
-        assert_eq!(room.dice_count, 1);
+        room.apply(
+            &id[0],
+            ClientMsg::SetDiceSet {
+                dice: tray(DieKind::D6, 99),
+            },
+        );
+        assert_eq!(room.dice_set.len(), 8); // clamped to max_dice
+        room.apply(&id[0], ClientMsg::SetDiceSet { dice: vec![] });
+        assert_eq!(room.dice_set.len(), 1); // empty → one d6
+        assert_eq!(room.dice_set[0].kind, DieKind::D6);
+    }
+
+    #[test]
+    fn roll_ranges_per_kind() {
+        let mut room = room_with(1);
+        let id = ids(&room);
+        let kinds = [
+            DieKind::D4,
+            DieKind::D6,
+            DieKind::D8,
+            DieKind::D10,
+            DieKind::D12,
+            DieKind::D20,
+            DieKind::D100,
+        ];
+        let dice: Vec<DieSpec> = kinds
+            .iter()
+            .map(|&kind| DieSpec {
+                kind,
+                material: "ivory".into(),
+            })
+            .collect();
+        room.apply(&id[0], ClientMsg::SetDiceSet { dice });
+        // Roll many times: every die stays within 1..=sides for its kind.
+        for _ in 0..300 {
+            room.apply(&id[0], ClientMsg::Roll);
+            let rec = room.history.last().unwrap();
+            assert_eq!(rec.dice.len(), kinds.len());
+            for d in &rec.dice {
+                assert!((1..=d.kind.sides()).contains(&d.value));
+            }
+            assert_eq!(rec.total, rec.dice.iter().map(|d| d.value).sum::<u32>());
+        }
+    }
+
+    #[test]
+    fn d100_spans_beyond_six() {
+        let mut room = room_with(1);
+        let id = ids(&room);
+        room.apply(
+            &id[0],
+            ClientMsg::SetDiceSet {
+                dice: tray(DieKind::D100, 1),
+            },
+        );
+        let mut max = 0;
+        for _ in 0..500 {
+            room.apply(&id[0], ClientMsg::Roll);
+            let v = room.history.last().unwrap().dice[0].value;
+            assert!((1..=100).contains(&v));
+            max = max.max(v);
+        }
+        assert!(max > 6, "d100 should produce values above 6");
+    }
+
+    #[test]
+    fn dice_set_material_sanitized() {
+        let mut room = room_with(1);
+        let id = ids(&room);
+        room.apply(
+            &id[0],
+            ClientMsg::SetDiceSet {
+                dice: vec![
+                    DieSpec {
+                        kind: DieKind::D20,
+                        material: "  ru!by??  ".into(), // junk stripped to a slug
+                    },
+                    DieSpec {
+                        kind: DieKind::D6,
+                        material: String::new(), // empty → default ivory
+                    },
+                ],
+            },
+        );
+        assert_eq!(room.dice_set[0].material, "ruby");
+        assert_eq!(room.dice_set[1].material, "ivory");
     }
 
     #[test]
