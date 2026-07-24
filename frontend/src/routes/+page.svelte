@@ -154,6 +154,9 @@
     <ThemeToggle />
     <LangToggle />
   </div>
+
+  <!-- Release tag — outside the lobby card, so it never shifts the layout. -->
+  <p class="ver">v{__APP_VERSION__}</p>
 </div>
 
 <!-- Mount the scanner only while open so the camera isn't grabbed on page load. -->
@@ -185,6 +188,13 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+  .ver {
+    margin: 0;
+    font-size: 0.7rem;
+    color: var(--halo-text-muted);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
   }
   .lobby {
     width: min(24rem, 100%);

@@ -112,7 +112,9 @@ the binary serves the embedded SPA _and_ the API + WebSocket from **one origin**
 so a deploy just runs the image and routes to it. Deployment-agnostic contract:
 
 - **Image:** `ghcr.io/eetu/dice` — CI publishes `:main` on every push to `main`,
-  and `:<version>` + `:latest` on a `v*` git tag.
+  and `:<version>` + `:latest` on a `v*` git tag, plus **rolling aliases**
+  `:1` (follows the latest `v1.x.y`) and `:1.0` (latest `v1.0.x`) so a server
+  can pin a major/minor and auto-update on releases without IaC changes.
 - **Port:** `3040` (change with `DICE_BIND`).
 - **Health:** `GET /status` → `{ service, version, rooms }`, unauthenticated —
   use it for liveness probes.

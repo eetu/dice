@@ -475,6 +475,8 @@
           />
         </div>
       {/if}
+      <!-- Release tag — inside the modal, so the game layout never changes. -->
+      <p class="ver">dice v{__APP_VERSION__}</p>
     </Modal>
   {/if}
 
@@ -649,6 +651,15 @@
     gap: 1rem;
     font-size: 0.9rem;
     color: var(--halo-text-muted);
+  }
+  /* Release tag at the settings-modal foot — informational, never load-bearing. */
+  .ver {
+    margin: 0.25rem 0 0;
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--halo-text-muted);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
   }
   /* A stacked label + full-width control (matches Select's field layout) — used
      for the segmented Appearance control. */

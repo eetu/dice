@@ -1,7 +1,15 @@
+import { readFileSync } from "node:fs";
+
 import { sveltekit } from "@sveltejs/kit/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { defineConfig } from "vite";
 import { qrcode } from "vite-plugin-qrcode";
+
+// App version baked in at build time (shown as a small tag in the UI). Kept in
+// lockstep with the Cargo workspace version by hand — one release, one number.
+const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
+  version: string;
+};
 
 // Vite dev server (:5173). Output → dist/ (adapter-static), embedded/served by
 // the Rust backend in prod. In dev, proxy the backend routes so the SPA is
@@ -16,6 +24,7 @@ import { qrcode } from "vite-plugin-qrcode";
 const exposeHost = !!process.env.DEV_HOST;
 
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [sveltekit(), ...(exposeHost ? [basicSsl(), qrcode()] : [])],
   server: {
     ...(exposeHost ? { host: true } : {}),

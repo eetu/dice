@@ -6,6 +6,9 @@ declare global {
     // interface PageData {}
     // interface Platform {}
   }
+
+  /** App version baked in at build time (vite define ← package.json). */
+  const __APP_VERSION__: string;
 }
 
 export {};

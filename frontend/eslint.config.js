@@ -6,4 +6,6 @@ import svelteConfig from "./svelte.config.js";
 export default [
   ...svelte(svelteConfig),
   { ignores: ["dist/", "build/", ".svelte-kit/", "src/lib/vendor/"] },
+  // Build-time constant injected by Vite `define` (see vite.config.ts).
+  { languageOptions: { globals: { __APP_VERSION__: "readonly" } } },
 ];
