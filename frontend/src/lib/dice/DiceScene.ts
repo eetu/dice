@@ -5,26 +5,42 @@
 //   1. Throw the dice with random impulse and simulate to rest OFF-SCREEN,
 //      recording every frame's transforms (record-then-playback = deterministic,
 //      the render can't diverge from the sim).
-//   2. A cube is symmetric, so whichever face physics settles face-up can be
-//      RELABELLED to show the target value — a constant `labelQuat` rotation of
-//      the pip layout, applied to the whole recorded tumble. The die shows the
-//      right number from frame one and comes to rest on it.
-//
-// Fixed, real die pips (opposite faces sum to 7).
+//   2. Every solid is symmetric, so whichever face physics settles face-up can
+//      be RELABELLED to show the target value — a `labelQuat` from the solid's
+//      rotation group (see `shapes.ts::relabelRotationFor`), applied to the whole
+//      recorded tumble. The die shows the right number from frame one, resting on
+//      it. `shapes.ts` supplies each die type's geometry, collider, read-axes,
+//      rotation group, and numbering (d6 keeps real pips; the rest use numerals).
 
 import * as CANNON from "cannon-es";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-
-import type { DieSpec } from "$lib/api";
 
 import { type Deck, deckByName } from "./decks";
-import { FACES, labelQuatFor, shownUpValue, UP } from "./orient";
+import { FACES, UP } from "./orient";
+import {
+  type DieShape,
+  type DieType,
+  relabelRotationFor,
+  shapeFor,
+  shownValueFor,
+} from "./shapes";
 import { themeByName } from "./themes";
 
+/** One die to render: its type, material, the target value it must show,
+ *  (for a d100's tens die) whether numerals display ×10 ("00".."90"), and
+ *  `percentile` = part of a d100 pair (dot-marked to set it apart from a loose
+ *  d10 on the table). */
+export type RenderDie = {
+  type: DieType;
+  material: string;
+  value: number;
+  tens?: boolean;
+  percentile?: boolean;
+};
+
 const DIE = 1.1; // die edge length (world units)
-const TRAY = 3.4; // tray half-extent (x/z)
+const TRAY = 3.9; // tray half-extent (x/z) — roomy so dice rarely wedge on a wall
 const GRAVITY = -32;
 const STEP = 1 / 60; // fixed physics timestep (also the playback frame rate)
 const EJECT_MS = 200; // fast "snap the old dice off the table" flourish before a roll
@@ -76,6 +92,61 @@ function inPlaneAxes(normal: THREE.Vector3): [THREE.Vector3, THREE.Vector3] {
   const u = new THREE.Vector3().crossVectors(ref, normal).normalize();
   const v = new THREE.Vector3().crossVectors(normal, u).normalize();
   return [u, v];
+}
+
+// ---------- numeral glyph atlas (polyhedral dice) ----------
+
+/** The numeral shown on a face for a value: d10 shows 10 as "0"; a d100 tens die
+ *  shows ×10 ("00".."90"); everything else is the value verbatim. */
+function glyphFor(type: DieType, value: number, tens: boolean): string {
+  if (tens) return String((value % 10) * 10).padStart(2, "0");
+  if (type === "d10") return value === 10 ? "0" : String(value);
+  return String(value);
+}
+
+type GlyphAtlas = {
+  texture: THREE.CanvasTexture;
+  /** UV rect (flipY=false space, y down) for a glyph string. */
+  cell: (glyph: string) => [number, number, number, number];
+};
+
+/** One shared canvas texture holding every numeral cell, built once per scene. */
+function makeGlyphAtlas(): GlyphAtlas {
+  const glyphs = new Set<string>();
+  for (let n = 0; n <= 20; n++) glyphs.add(String(n));
+  for (let t = 0; t <= 9; t++) glyphs.add(String(t * 10).padStart(2, "0"));
+  const list = [...glyphs];
+  const cols = 8;
+  const rows = Math.ceil(list.length / cols);
+  const cell = 128;
+  const c = document.createElement("canvas");
+  c.width = cols * cell;
+  c.height = rows * cell;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const index = new Map<string, number>();
+  list.forEach((g, i) => {
+    index.set(g, i);
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    // Two-digit glyphs get a slightly smaller font so they fit the cell.
+    ctx.font = `700 ${g.length > 1 ? 62 : 84}px ${"Space Grotesk, system-ui, sans-serif"}`;
+    ctx.fillText(g, col * cell + cell / 2, row * cell + cell / 2 + 4);
+  });
+  const texture = new THREE.CanvasTexture(c);
+  texture.flipY = false;
+  texture.anisotropy = 4;
+  return {
+    texture,
+    cell: (g) => {
+      const i = index.get(g) ?? 0;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      return [col / cols, row / rows, (col + 1) / cols, (row + 1) / rows];
+    },
+  };
 }
 
 // Liquid table: a subdivided plane whose surface ripples on dice impacts and
@@ -179,11 +250,20 @@ function makeFeltTexture(): THREE.CanvasTexture {
 }
 
 type Die = {
+  type: DieType;
+  shape: DieShape;
+  tens: boolean;
+  percentile: boolean;
   group: THREE.Group;
   mesh: THREE.Mesh;
   body: CANNON.Body;
   bodyMat: THREE.MeshPhysicalMaterial;
+  /** Pip/numeral material (tinted per die). */
   pipMat: THREE.MeshStandardMaterial;
+  /** Solid material for a d100's marker dots (undefined otherwise). */
+  markMat?: THREE.MeshStandardMaterial;
+  /** Per-numeral plane geometries to dispose (empty for d6, which uses pips). */
+  glyphGeos: THREE.BufferGeometry[];
   target: number;
   /** This die's material (theme slug) — dice in a tray can differ. */
   material: string;
@@ -191,7 +271,7 @@ type Die = {
   labelQuat: THREE.Quaternion;
 };
 
-export type HoverInfo = { value: number; x: number; y: number };
+export type HoverInfo = { value: string; x: number; y: number };
 
 export type DiceSceneOptions = {
   onImpact?: (strength: number, material: string, theme: string) => void;
@@ -207,6 +287,13 @@ export class DiceScene {
   #floorMat = new CANNON.Material("floor");
   #wallMat = new CANNON.Material("wall");
   #pipGeo = new THREE.CircleGeometry(DIE * 0.085, 20);
+  #glyph = makeGlyphAtlas();
+  // The raised tray walls (recessed-table look); recoloured with the deck.
+  #walls: {
+    geo: THREE.BufferGeometry[];
+    mat: THREE.MeshStandardMaterial;
+  } | null = null;
+  #rounded = true; // soft (rounded) dice bodies by default
   #dice: Die[] = [];
   #themeName = "ivory";
   #opts: DiceSceneOptions;
@@ -402,10 +489,46 @@ export class DiceScene {
         body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
       this.#world.addBody(body);
     }
+
+    // Raised felt walls at the boundary (±TRAY) → the play area reads as a
+    // recessed dice-tray, and a die resting against one clearly "stopped at the
+    // wall". Opaque, but the camera is steep enough that these short near-edge
+    // walls never occlude the dice. Colour follows the deck (see #applyDeck).
+    const wallH = 0.6;
+    const th = 0.12;
+    const span = TRAY * 2 + th;
+    const wallGeo = [
+      new THREE.BoxGeometry(th, wallH, span), // x-walls
+      new THREE.BoxGeometry(span, wallH, th), // z-walls
+    ];
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x1f6b3a,
+      roughness: 0.95,
+      metalness: 0,
+    });
+    const places: [THREE.BufferGeometry, number, number][] = [
+      [wallGeo[0], TRAY, 0],
+      [wallGeo[0], -TRAY, 0],
+      [wallGeo[1], 0, TRAY],
+      [wallGeo[1], 0, -TRAY],
+    ];
+    for (const [geo, x, z] of places) {
+      const wall = new THREE.Mesh(geo, wallMat);
+      wall.position.set(x, wallH / 2, z);
+      wall.receiveShadow = true;
+      this.#scene.add(wall);
+    }
+    this.#walls = { geo: wallGeo, mat: wallMat };
   }
 
-  #makeDie(material = this.#themeName): Die {
+  #makeDie(
+    type: DieType,
+    material = this.#themeName,
+    tens = false,
+    percentile = false,
+  ): Die {
     const theme = themeByName(material);
+    const shape = shapeFor(type);
     const group = new THREE.Group();
     const bodyMat = new THREE.MeshPhysicalMaterial({
       color: theme.body,
@@ -415,39 +538,94 @@ export class DiceScene {
       clearcoatRoughness: 0.2,
       envMapIntensity: 1,
     });
-    const mesh = new THREE.Mesh(
-      new RoundedBoxGeometry(DIE, DIE, DIE, 5, DIE * 0.12),
-      bodyMat,
-    );
+    const mesh = new THREE.Mesh(shape.makeGeometry(this.#rounded), bodyMat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData.die = true;
     group.add(mesh);
 
-    const pipMat = new THREE.MeshStandardMaterial({
-      color: theme.pip,
-      roughness: 0.55,
-    });
-    const g = DIE * 0.24;
-    for (const f of FACES) {
-      const [u, v] = inPlaneAxes(f.normal);
-      for (const [a, b] of PIPS[f.value]) {
-        const pip = new THREE.Mesh(this.#pipGeo, pipMat);
-        pip.position
-          .copy(f.normal)
-          .multiplyScalar(DIE / 2 + 0.006)
-          .addScaledVector(u, a * g)
-          .addScaledVector(v, b * g);
-        pip.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.normal);
-        group.add(pip);
+    const glyphGeos: THREE.BufferGeometry[] = [];
+    let pipMat: THREE.MeshStandardMaterial;
+    let markMat: THREE.MeshStandardMaterial | undefined; // d100 dot marker
+    if (type === "d6") {
+      // Real pips (opposite faces sum to 7).
+      pipMat = new THREE.MeshStandardMaterial({
+        color: theme.pip,
+        roughness: 0.55,
+      });
+      const g = DIE * 0.24;
+      for (const f of FACES) {
+        const [u, v] = inPlaneAxes(f.normal);
+        for (const [a, b] of PIPS[f.value]) {
+          const pip = new THREE.Mesh(this.#pipGeo, pipMat);
+          pip.position
+            .copy(f.normal)
+            .multiplyScalar(DIE / 2 + 0.006)
+            .addScaledVector(u, a * g)
+            .addScaledVector(v, b * g);
+          pip.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 0, 1),
+            f.normal,
+          );
+          group.add(pip);
+        }
+      }
+    } else {
+      // Numerals from the shared glyph atlas, in the material's pip colour (which
+      // is contrast-designed for the body — a fixed accent washed out on
+      // white/gold bodies).
+      pipMat = new THREE.MeshStandardMaterial({
+        map: this.#glyph.texture,
+        color: theme.pip,
+        roughness: 0.5,
+        transparent: true,
+        alphaTest: 0.35,
+      });
+      const size = shape.radius * (type === "d4" ? 0.5 : 0.72);
+      // A d100 pair is marked with a small dot under each numeral — a shape cue
+      // (in the same contrast-safe pip colour, a SOLID material — pipMat carries
+      // the glyph atlas) so it reads apart from a loose d10 on any body.
+      const dotGeo = percentile
+        ? new THREE.CircleGeometry(size * 0.09, 16)
+        : null;
+      if (dotGeo) {
+        glyphGeos.push(dotGeo);
+        markMat = new THREE.MeshStandardMaterial({
+          color: theme.pip,
+          roughness: 0.55,
+        });
+      }
+      for (const p of shape.placements) {
+        const { mesh: glyph, geo } = this.#glyphMesh(
+          glyphFor(type, p.value, tens),
+          size,
+          pipMat,
+          p,
+        );
+        glyphGeos.push(geo);
+        group.add(glyph);
+        if (dotGeo && markMat) {
+          const dot = new THREE.Mesh(dotGeo, markMat);
+          const n = p.normal.clone().normalize();
+          const up = p.up.clone().normalize();
+          const right = new THREE.Vector3().crossVectors(up, n).normalize();
+          dot.quaternion.setFromRotationMatrix(
+            new THREE.Matrix4().makeBasis(right, up, n),
+          );
+          dot.position
+            .copy(p.center)
+            .addScaledVector(n, 0.012)
+            .addScaledVector(up, -size * 0.5);
+          group.add(dot);
+        }
       }
     }
     this.#scene.add(group);
-    mesh.userData.die = true;
 
     const body = new CANNON.Body({
       mass: 1,
       material: this.#diceMat,
-      shape: new CANNON.Box(new CANNON.Vec3(DIE / 2, DIE / 2, DIE / 2)),
+      shape: shape.makeCollider(),
       allowSleep: true,
       sleepSpeedLimit: 0.15,
       sleepTimeLimit: 0.1,
@@ -475,50 +653,96 @@ export class DiceScene {
     this.#world.addBody(body);
 
     return {
+      type,
+      shape,
+      tens,
+      percentile,
       group,
       mesh,
       body,
       bodyMat,
       pipMat,
+      markMat,
+      glyphGeos,
       target: 1,
       material,
       labelQuat: new THREE.Quaternion(),
     };
   }
 
+  /** A numeral plane: a unit plane UV-mapped into the shared glyph atlas cell,
+   *  positioned + oriented flat on a face. */
+  #glyphMesh(
+    glyph: string,
+    size: number,
+    mat: THREE.Material,
+    p: { center: THREE.Vector3; normal: THREE.Vector3; up: THREE.Vector3 },
+  ): { mesh: THREE.Mesh; geo: THREE.BufferGeometry } {
+    const geo = new THREE.PlaneGeometry(size, size);
+    const [u0, v0, u1, v1] = this.#glyph.cell(glyph);
+    const uv = geo.attributes.uv as THREE.BufferAttribute;
+    uv.setXY(0, u0, v0); // top-left
+    uv.setXY(1, u1, v0); // top-right
+    uv.setXY(2, u0, v1); // bottom-left
+    uv.setXY(3, u1, v1); // bottom-right
+    uv.needsUpdate = true;
+    const n = p.normal.clone().normalize();
+    const up = p.up.clone().normalize();
+    const right = new THREE.Vector3().crossVectors(up, n).normalize();
+    const up2 = new THREE.Vector3().crossVectors(n, right).normalize();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.quaternion.setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(right, up2, n),
+    );
+    mesh.position.copy(p.center).addScaledVector(n, 0.012);
+    return { mesh, geo };
+  }
+
   #removeDie(die: Die) {
     this.#scene.remove(die.group);
-    die.group.traverse((o) => {
-      if (o instanceof THREE.Mesh && o.geometry instanceof RoundedBoxGeometry)
-        o.geometry.dispose();
-    });
+    die.mesh.geometry.dispose();
+    for (const g of die.glyphGeos) g.dispose();
     die.bodyMat.dispose();
     die.pipMat.dispose();
+    die.markMat?.dispose();
     this.#world.removeBody(die.body);
   }
 
-  /** Reconcile the tray to `specs` (count + per-die material). Adding/removing a
-   *  die re-lays-out; a pure material change recolors in place (so a rename /
-   *  presence Sync doesn't wipe the shown result back to face 1). */
-  setDice(specs: DieSpec[]) {
+  /** Reconcile the tray to `specs` (count, per-die type + material). A changed
+   *  type/tens rebuilds that die; adding/removing re-lays-out; a pure material
+   *  change recolors in place (so a rename / presence Sync doesn't wipe the shown
+   *  result back to face 1). */
+  setDice(specs: RenderDie[]) {
     const n = Math.max(1, Math.min(12, specs.length));
-    const countChanged = n !== this.#dice.length;
+    let structural = n !== this.#dice.length;
+    for (let i = 0; i < Math.min(n, this.#dice.length); i++) {
+      const d = this.#dice[i];
+      const s = specs[i];
+      if (
+        d.type !== s.type ||
+        d.tens !== !!s.tens ||
+        d.percentile !== !!s.percentile
+      ) {
+        this.#removeDie(d);
+        this.#dice[i] = this.#makeDie(
+          s.type,
+          s.material,
+          !!s.tens,
+          !!s.percentile,
+        );
+        structural = true;
+      }
+    }
     while (this.#dice.length < n) {
-      this.#dice.push(this.#makeDie(specs[this.#dice.length]?.material));
+      const s = specs[this.#dice.length];
+      this.#dice.push(
+        this.#makeDie(s.type, s.material, !!s.tens, !!s.percentile),
+      );
     }
     while (this.#dice.length > n) this.#removeDie(this.#dice.pop()!);
-    // Apply each die's material (cheap; only touches colors/PBR params).
     this.#dice.forEach((d, i) => this.#applyMaterial(d, specs[i]?.material));
-    if (countChanged && this.#phase === "idle") this.#layoutIdle();
+    if (structural && this.#phase === "idle") this.#layoutIdle();
     else this.#requestStatic();
-  }
-
-  /** Grow/shrink the die count only (materials are managed by `setDice`) — used
-   *  by `roll`/`showValues`, which set positions themselves. */
-  #ensureCount(n: number) {
-    n = Math.max(1, Math.min(12, n));
-    while (this.#dice.length < n) this.#dice.push(this.#makeDie());
-    while (this.#dice.length > n) this.#removeDie(this.#dice.pop()!);
   }
 
   /** Recolor one die to a material (theme slug); no-op if already applied. */
@@ -530,6 +754,7 @@ export class DiceScene {
     die.bodyMat.roughness = theme.roughness;
     die.bodyMat.clearcoat = theme.clearcoat;
     die.pipMat.color.setHex(theme.pip);
+    die.markMat?.color.setHex(theme.pip);
     die.material = name;
   }
 
@@ -538,7 +763,9 @@ export class DiceScene {
    *  grid (cols ≈ √n) — every position stays well within ±TRAY. */
   #restPositions(): [number, number][] {
     const n = this.#dice.length;
-    const gap = DIE * 1.35;
+    // Gap scales with the largest die so mixed sizes never overlap in the grid.
+    const maxR = Math.max(DIE / 2, ...this.#dice.map((d) => d.shape.radius));
+    const gap = maxR * 2.3;
     const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
     const rows = Math.ceil(n / cols);
     const out: [number, number][] = [];
@@ -551,18 +778,49 @@ export class DiceScene {
     return out;
   }
 
+  /** A resting orientation showing `value` up: rotate that value's read-axis to
+   *  world-up. For face dice the opposite face lies flat down; for d4 the target
+   *  vertex is up (opposite face down) — a valid rest for every solid. */
+  #restPose(die: Die, value: number): THREE.Quaternion {
+    const axis = (
+      die.shape.readAxes.find((a) => a.value === value) ?? die.shape.readAxes[0]
+    ).dir;
+    return new THREE.Quaternion().setFromUnitVectors(axis, UP);
+  }
+
   /** Rest the dice in a tidy grid (showing face 1) when nothing is rolling. */
   #layoutIdle() {
     const pos = this.#restPositions();
     this.#dice.forEach((d, i) => {
       const [x, z] = pos[i];
       d.labelQuat.identity();
-      d.group.position.set(x, DIE / 2, z);
-      d.group.quaternion.identity();
-      d.body.position.set(x, DIE / 2, z);
-      d.body.quaternion.set(0, 0, 0, 1);
+      const q = this.#restPose(d, 1);
+      const y = d.shape.inradius;
+      d.group.position.set(x, y, z);
+      d.group.quaternion.copy(q);
+      d.body.position.set(x, y, z);
+      d.body.quaternion.set(q.x, q.y, q.z, q.w);
     });
     this.#requestStatic();
+  }
+
+  /** Toggle rounded (soft) vs flat-faceted dice bodies. Rebuilds every die with
+   *  the new geometry, preserving each one's type/material/value. */
+  setRounded(rounded: boolean) {
+    if (rounded === this.#rounded) return;
+    this.#rounded = rounded;
+    const specs: RenderDie[] = this.#dice.map((d) => ({
+      type: d.type,
+      material: d.material,
+      value: d.target,
+      tens: d.tens,
+      percentile: d.percentile,
+    }));
+    const showing = this.#hasResult;
+    for (const d of this.#dice) this.#removeDie(d);
+    this.#dice = [];
+    if (showing) this.showValues(specs);
+    else this.setDice(specs);
   }
 
   /** Change the table (room-wide). */
@@ -579,6 +837,8 @@ export class DiceScene {
     const liquid = !!deck.liquid;
     this.#liquidDeck = liquid;
     this.#feltMat.color.setHex(deck.color);
+    // Tray walls follow the deck, a touch darker so the recess reads with depth.
+    this.#walls?.mat.color.setHex(deck.color).multiplyScalar(0.62);
     this.#feltMat.roughness = liquid ? 0.14 : deck.roughness;
     this.#feltMat.metalness = liquid ? 0 : deck.metalness;
     this.#feltMat.envMapIntensity = liquid ? 1.4 : 1;
@@ -633,30 +893,31 @@ export class DiceScene {
   /** Statically show the given values with no tumble — used when the 3D scene is
    *  (re)created after a theme switch so it restores the last result instead of
    *  resetting to face 1. Positions reset to the tidy row; only the faces matter. */
-  showValues(values: number[]) {
-    this.#ensureCount(values.length);
-    const identity = new THREE.Quaternion();
+  showValues(dice: RenderDie[]) {
+    this.setDice(dice);
     const pos = this.#restPositions();
     this.#dice.forEach((d, i) => {
-      d.target = values[i] ?? 1;
-      d.labelQuat.copy(labelQuatFor(d.target, identity));
+      d.target = dice[i]?.value ?? 1;
+      d.labelQuat.identity();
+      const q = this.#restPose(d, d.target);
       const [x, z] = pos[i];
-      d.body.position.set(x, DIE / 2, z);
-      d.body.quaternion.set(0, 0, 0, 1);
-      d.group.position.set(x, DIE / 2, z);
-      d.group.quaternion.copy(d.labelQuat); // body identity ∘ label = label
+      const y = d.shape.inradius;
+      d.body.position.set(x, y, z);
+      d.body.quaternion.set(q.x, q.y, q.z, q.w);
+      d.group.position.set(x, y, z);
+      d.group.quaternion.copy(q);
     });
     this.#hasResult = true;
     this.#requestStatic();
   }
 
-  /** Throw the dice; they tumble and settle showing `targets` (1..6 each). */
-  roll(targets: number[]) {
-    this.#ensureCount(targets.length);
+  /** Throw the dice; they tumble and settle showing each `value`. */
+  roll(dice: RenderDie[]) {
+    this.setDice(dice);
 
     // Random throw for each die.
     this.#dice.forEach((d, i) => {
-      d.target = targets[i] ?? 1;
+      d.target = dice[i]?.value ?? 1;
       const b = d.body;
       b.wakeUp();
       // Drop from a central patch (well inside the walls) with a gentle sideways
@@ -724,20 +985,22 @@ export class DiceScene {
         d.body.quaternion.z,
         d.body.quaternion.w,
       );
-      d.labelQuat.copy(labelQuatFor(d.target, q));
+      d.labelQuat.copy(relabelRotationFor(d.target, q, d.shape));
     });
 
     // A cube at rest on a flat floor is either lying flat or balanced/wedged
     // (typically against a wall) — there is no stable "slightly tilted" rest. So
     // any die that settled NOT flat is wedged: ease the tail of its tumble down to
     // a flat, face-up pose. Value stays correct — the relabel is recomputed
-    // against the flat orientation with the same tested labelQuatFor.
+    // against the flat orientation. (d6 only for now — the polyhedra rest on a
+    // face naturally with their convex colliders; generalized flatten is Phase 4.)
     const FLATTEN_TAIL = 12;
     const flat = new THREE.Quaternion(); // identity — axis-aligned, lies flat
     const axis = new THREE.Vector3();
     const eased = new THREE.Quaternion();
     const total = this.#frames.length;
     this.#dice.forEach((d, di) => {
+      if (d.type !== "d6") return; // cube-specific flatten
       const o = di * 7;
       const last = this.#frames[total - 1];
       if (last[o + 1] > DIE * 1.5) return; // stacked on another die — leave it
@@ -750,7 +1013,7 @@ export class DiceScene {
       if (upness >= 0.97) return; // already flat
       // A random yaw so flattened dice don't look grid-aligned next to natural ones.
       flat.setFromAxisAngle(axis.set(0, 1, 0), Math.random() * Math.PI * 2);
-      d.labelQuat.copy(labelQuatFor(d.target, flat));
+      d.labelQuat.copy(relabelRotationFor(d.target, flat, d.shape));
       const start = Math.max(0, total - FLATTEN_TAIL);
       const s0 = this.#frames[start];
       const fromQ = new THREE.Quaternion(
@@ -827,7 +1090,7 @@ export class DiceScene {
         d.body.quaternion.w,
       );
       q.multiply(d.labelQuat);
-      return shownUpValue(q);
+      return shownValueFor(q, d.shape.readAxes);
     });
   }
 
@@ -931,13 +1194,15 @@ export class DiceScene {
     const cam = this.#camera;
     const target = new THREE.Vector3(0, 0.4, 0);
     const dir = new THREE.Vector3(0, 8.5, 5.5).normalize();
-    const R = TRAY + DIE * 0.3;
+    const R = TRAY; // frame the wall boundary itself so the glass sits at the edges
     const corners: THREE.Vector3[] = [];
-    for (const y of [0, DIE])
+    // Include a raised corner (a tall die resting against the far wall) so it
+    // can't clip at the top of the frame.
+    for (const y of [0, DIE * 1.5])
       for (const sx of [-1, 1])
         for (const sz of [-1, 1])
           corners.push(new THREE.Vector3(sx * R, y, sz * R));
-    const LIMIT = 0.92; // keep the tray corners within 92% of the frame
+    const LIMIT = 0.99; // hug the frame — tray corners within 97%
     const p = new THREE.Vector3();
     const fits = (dist: number) => {
       cam.position.copy(dir).multiplyScalar(dist).add(target);
@@ -985,7 +1250,9 @@ export class DiceScene {
     if (!die) return null;
     const p = die.group.position.clone().project(this.#camera);
     return {
-      value: die.target,
+      // The glyph actually printed on the face (d10 "0", a d100 tens "70"),
+      // not the raw face value.
+      value: glyphFor(die.type, die.target, die.tens),
       x: (p.x * 0.5 + 0.5) * rect.width,
       y: (-p.y * 0.5 + 0.5) * rect.height,
     };
@@ -1008,6 +1275,9 @@ export class DiceScene {
     this.#ro.disconnect();
     for (const d of [...this.#dice]) this.#removeDie(d);
     this.#pipGeo.dispose();
+    this.#glyph.texture.dispose();
+    this.#walls?.geo.forEach((g) => g.dispose());
+    this.#walls?.mat.dispose();
     this.#feltMat.dispose();
     this.#feltTex.dispose();
     this.#renderer.dispose();

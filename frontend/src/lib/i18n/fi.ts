@@ -72,6 +72,7 @@ export const fi: Catalog = {
   yatzyDice: "Yatzy",
   farkleDice: "Farkle",
   dice: "Nopat",
+  roundedDice: "Pyöristetyt nopat",
   dieMaterial: "Materiaali",
   trayCount: (n: number, max: number) => `${n}/${max}`,
   addDie: (kind: string) => `Lisää ${kind}`,
@@ -221,9 +222,9 @@ export const fi: Catalog = {
 
   // Table (deck) names
   decks: {
-    "felt-green": "Vihreä veran",
-    "felt-red": "Punainen veran",
-    "felt-blue": "Sininen veran",
+    "felt-green": "Vihreä verka",
+    "felt-red": "Punainen verka",
+    "felt-blue": "Sininen verka",
     oak: "Tammi",
     walnut: "Pähkinäpuu",
     concrete: "Betoni",

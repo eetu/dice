@@ -1,11 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  import type { DieSpec, RollRecord } from "$lib/api";
-  import { DiceScene, type HoverInfo } from "$lib/dice/DiceScene";
+  import type { DieSpec, RollDie, RollRecord } from "$lib/api";
+  import {
+    DiceScene,
+    type HoverInfo,
+    type RenderDie,
+  } from "$lib/dice/DiceScene";
+  import { d100Digits, type DieType } from "$lib/dice/shapes";
   import { themeByName } from "$lib/dice/themes";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
+  import { dicePrefs } from "$lib/stores/dicePrefs.svelte";
   import { shake } from "$lib/stores/shake.svelte";
 
   import NixieDice from "./NixieDice.svelte";
@@ -22,17 +28,47 @@
   let { lastRoll, diceSet, deck, canRoll, rolling, onRoll, onSettled }: Props =
     $props();
 
-  // Render branch chosen from the tray: all-nixie → glowing tubes; all-d6
-  // (non-nixie) → the 3D physics cube scene; anything else (polyhedra — until the
-  // polyhedral 3D engine lands) → a numeric token grid.
+  // Render branch from the tray: all-nixie → glowing tubes; else the 3D physics
+  // scene (all polyhedra now render there); the numeric token grid is only the
+  // WebGL-unavailable / automated fallback.
   const allNixie = $derived(
     diceSet.length > 0 && diceSet.every((d) => d.material === "nixie"),
   );
-  const allD6 = $derived(
-    diceSet.length > 0 && diceSet.every((d) => d.kind === "d6"),
-  );
-  const use3D = $derived(allD6 && !allNixie);
+  const use3D = $derived(diceSet.length > 0 && !allNixie);
   const nixieColor = $derived(themeByName("nixie").nixieColor ?? "#ff6a12");
+
+  // Expand the tray into render dice (a d100 → a tens + units d10 pair). `roll`,
+  // when aligned to the tray, supplies each die's value; otherwise value=1.
+  function expand(specs: DieSpec[], roll?: RollDie[]): RenderDie[] {
+    const aligned = roll && roll.length === specs.length ? roll : undefined;
+    const out: RenderDie[] = [];
+    specs.forEach((spec, i) => {
+      const value = aligned?.[i]?.value;
+      if (spec.kind === "d100") {
+        const d = value != null ? d100Digits(value) : { tens: 0, units: 0 };
+        out.push({
+          type: "d10",
+          material: spec.material,
+          tens: true,
+          percentile: true,
+          value: d.tens === 0 ? 10 : d.tens,
+        });
+        out.push({
+          type: "d10",
+          material: spec.material,
+          percentile: true,
+          value: d.units === 0 ? 10 : d.units,
+        });
+      } else {
+        out.push({
+          type: spec.kind as DieType,
+          material: spec.material,
+          value: value ?? 1,
+        });
+      }
+    });
+    return out;
+  }
 
   let canvas = $state<HTMLCanvasElement>();
   let scene: DiceScene | null = null;
@@ -65,11 +101,12 @@
           onSettled: () => onSettled?.(),
         });
         scene.setDeck(deck);
-        scene.setDice(diceSet);
         seenRollId = lastRoll?.id ?? -1;
         // Restore the last result (e.g. switching back) instead of face 1.
         if (lastRoll && lastRoll.dice.length === diceSet.length) {
-          scene.showValues(lastRoll.dice.map((d) => d.value));
+          scene.showValues(expand(diceSet, lastRoll.dice));
+        } else {
+          scene.setDice(expand(diceSet));
         }
       } catch (e) {
         console.error("dice scene init failed", e);
@@ -84,14 +121,20 @@
   });
   $effect(() => {
     const set = diceSet;
-    if (scene) scene.setDice(set);
+    if (scene) scene.setDice(expand(set));
+  });
+  $effect(() => {
+    const r = dicePrefs.rounded;
+    scene?.setRounded(r);
   });
   $effect(() => {
     const r = lastRoll;
     if (scene && r && r.id !== seenRollId) {
       seenRollId = r.id;
       hover = null;
-      scene.roll(r.dice.map((d) => d.value));
+      // Only animate a roll that matches the current tray; a stale roll (tray
+      // edited since) just leaves the tray shown.
+      if (r.dice.length === diceSet.length) scene.roll(expand(diceSet, r.dice));
     }
   });
 

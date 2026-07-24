@@ -4,9 +4,11 @@
   // `onChange` (the server echoes back through the snapshot — last write wins).
   import type { DieKind, DieSpec } from "$lib/api";
   import Select from "$lib/components/Select.svelte";
+  import Switch from "$lib/components/Switch.svelte";
   import { DECKS } from "$lib/dice/decks";
   import { themeByName, THEMES } from "$lib/dice/themes";
   import { i18n } from "$lib/i18n/i18n.svelte";
+  import { dicePrefs } from "$lib/stores/dicePrefs.svelte";
 
   type Props = {
     diceSet: DieSpec[];
@@ -104,6 +106,16 @@
       value={deck}
       options={deckOptions}
       onChange={onDeckChange}
+    />
+  </div>
+
+  <!-- Rounded vs flat-faceted dice bodies — an on-device visual preference. -->
+  <div class="toggle">
+    <span>{i18n.m.roundedDice}</span>
+    <Switch
+      checked={dicePrefs.rounded}
+      label={i18n.m.roundedDice}
+      onChange={() => dicePrefs.setRounded(!dicePrefs.rounded)}
     />
   </div>
 </div>
@@ -205,5 +217,13 @@
   .table-sel {
     padding-top: 0.9rem;
     border-top: 1px solid var(--halo-border);
+  }
+  .toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.9rem;
+    color: var(--halo-text-muted);
   }
 </style>

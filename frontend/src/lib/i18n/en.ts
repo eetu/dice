@@ -71,6 +71,7 @@ export const en = {
   yatzyDice: "Yatzy",
   farkleDice: "Farkle",
   dice: "Dice",
+  roundedDice: "Rounded dice",
   dieMaterial: "Material",
   trayCount: (n: number, max: number) => `${n}/${max}`,
   addDie: (kind: string) => `Add ${kind}`,

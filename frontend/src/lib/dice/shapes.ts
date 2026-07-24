@@ -37,12 +37,15 @@ export type DieShape = {
   readMode: "face" | "vertex";
   /** Circumradius of the mesh/collider (world units). */
   radius: number;
+  /** Center→nearest-face distance = the height it rests at (face down). */
+  inradius: number;
   readAxes: ReadAxis[];
   /** The solid's proper rotation group (unit quaternions incl. identity). */
   rotations: THREE.Quaternion[];
   /** Numbered faces for rendering (empty for d6, which uses pips). */
   placements: FacePlacement[];
-  makeGeometry: () => THREE.BufferGeometry;
+  /** `rounded` → smooth-shaded body (soft edges); else flat facets. */
+  makeGeometry: (rounded: boolean) => THREE.BufferGeometry;
   makeCollider: () => CANNON.Shape;
 };
 
@@ -170,20 +173,33 @@ function dodeca(): Poly {
   return { verts, faces };
 }
 
-/** Pentagonal trapezohedron (d10): two poles + two offset rings of 5 → 10 kites. */
+/** Pentagonal trapezohedron (d10): two poles + two offset rings of 5 → 10 kite
+ *  faces. The pole height is SOLVED so each kite is planar — otherwise its two
+ *  render triangles crease and the die reads as a 20-facet blob, not a d10. */
 function trapezohedron(): Poly {
   const ring = 1.0;
-  const a = 0.35; // ring height (±)
-  const h = 1.15; // pole height
+  const a = 0.16; // equatorial ring half-height (tunes the d10 aspect)
+  const step = (2 * Math.PI) / 5;
+  const U0 = v(ring, a, 0);
+  const U1 = v(ring * Math.cos(step), a, ring * Math.sin(step));
+  const L0 = v(ring * Math.cos(step / 2), -a, ring * Math.sin(step / 2));
+  // Plane normal of the k=0 upper kite's ring vertices; the pole T=(0,h,0) lies
+  // on that plane when h = (U0·N)/N.y → all kites planar (by symmetry).
+  const n = new THREE.Vector3()
+    .subVectors(U1, U0)
+    .cross(new THREE.Vector3().subVectors(L0, U0));
+  const h = U0.dot(n) / n.y;
   const verts: THREE.Vector3[] = [v(0, h, 0), v(0, -h, 0)];
-  for (let k = 0; k < 5; k++) {
-    const up = (k * 2 * Math.PI) / 5;
-    verts.push(v(ring * Math.cos(up), a, ring * Math.sin(up)));
-  }
-  for (let k = 0; k < 5; k++) {
-    const lo = (k * 2 * Math.PI) / 5 + Math.PI / 5;
-    verts.push(v(ring * Math.cos(lo), -a, ring * Math.sin(lo)));
-  }
+  for (let k = 0; k < 5; k++)
+    verts.push(v(ring * Math.cos(k * step), a, ring * Math.sin(k * step)));
+  for (let k = 0; k < 5; k++)
+    verts.push(
+      v(
+        ring * Math.cos(k * step + step / 2),
+        -a,
+        ring * Math.sin(k * step + step / 2),
+      ),
+    );
   const U = (k: number) => 2 + (((k % 5) + 5) % 5);
   const L = (k: number) => 7 + (((k % 5) + 5) % 5);
   const faces: number[][] = [];
@@ -221,31 +237,38 @@ function trianglesFrom(verts: THREE.Vector3[], want: number): number[][] {
  *  directions, the 5 nearest vertices, ordered around the centre. */
 function pentagonsFrom(verts: THREE.Vector3[]): number[][] {
   const p = (1 + Math.sqrt(5)) / 2;
-  // Face centres of a dodecahedron point along the icosahedron's vertices.
+  // Face centres of THIS dodecahedron point along cyclic perms of (0, φ, 1) — the
+  // dual icosahedron's vertices. (Not (0, 1, φ): with these verts the φ/1 slots
+  // are swapped, and getting it wrong groups non-coplanar verts into junk faces.)
   const centres = [
-    v(0, 1, p),
-    v(0, 1, -p),
-    v(0, -1, p),
-    v(0, -1, -p),
-    v(1, p, 0),
-    v(1, -p, 0),
-    v(-1, p, 0),
-    v(-1, -p, 0),
-    v(p, 0, 1),
-    v(p, 0, -1),
-    v(-p, 0, 1),
-    v(-p, 0, -1),
+    v(0, p, 1),
+    v(0, p, -1),
+    v(0, -p, 1),
+    v(0, -p, -1),
+    v(1, 0, p),
+    v(-1, 0, p),
+    v(1, 0, -p),
+    v(-1, 0, -p),
+    v(p, 1, 0),
+    v(p, -1, 0),
+    v(-p, 1, 0),
+    v(-p, -1, 0),
   ];
-  return centres.map((c) => {
-    const cn = c.clone().normalize();
+  return centres.map((dir) => {
+    const cn = dir.clone().normalize();
     const near = verts
       .map((vert, i) => ({ i, d: vert.clone().normalize().dot(cn) }))
       .sort((x, y) => y.d - x.d)
       .slice(0, 5)
       .map((x) => x.i);
-    // Order the 5 around the centre by angle in the face plane.
+    // Order the 5 around the TRUE face centroid (not the centre direction, whose
+    // magnitude differs) so the pentagon isn't wound into a self-crossing bowtie.
+    const c = new THREE.Vector3();
+    for (const i of near) c.add(verts[i]);
+    c.multiplyScalar(1 / near.length);
+    const nrm = c.clone().normalize();
     const u = new THREE.Vector3().subVectors(verts[near[0]], c).normalize();
-    const w = new THREE.Vector3().crossVectors(cn, u).normalize();
+    const w = new THREE.Vector3().crossVectors(nrm, u).normalize();
     return near.sort((x, y) => {
       const ax = Math.atan2(
         verts[x].clone().sub(c).dot(w),
@@ -268,17 +291,17 @@ function faceCentroid(poly: Poly, face: number[]): THREE.Vector3 {
   return c.multiplyScalar(1 / face.length);
 }
 
-/** Newell normal of a face (robust for near-planar polygons). */
-function faceNormal(poly: Poly, face: number[]): THREE.Vector3 {
-  const n = new THREE.Vector3();
-  for (let i = 0; i < face.length; i++) {
-    const a = poly.verts[face[i]];
-    const b = poly.verts[face[(i + 1) % face.length]];
-    n.x += (a.y - b.y) * (a.z + b.z);
-    n.y += (a.z - b.z) * (a.x + b.x);
-    n.z += (a.x - b.x) * (a.y + b.y);
-  }
-  return n.normalize();
+/** Normal of a face's first fan triangle — the SAME winding `polyGeometry` and
+ *  the collider use, so orienting by it guarantees the rendered/colliding faces
+ *  point outward (the Newell normal can disagree in sign for a fan). */
+function fanNormal(poly: Poly, face: number[]): THREE.Vector3 {
+  const a = poly.verts[face[0]];
+  const b = poly.verts[face[1]];
+  const c = poly.verts[face[2]];
+  return new THREE.Vector3()
+    .subVectors(b, a)
+    .cross(new THREE.Vector3().subVectors(c, a))
+    .normalize();
 }
 
 /** Pair antipodal faces and assign 1..n so opposite faces sum to `sum`. */
@@ -322,15 +345,16 @@ function buildFaceShape(opts: BuildOpts): DieShape {
   const verts = poly.verts.map((p) => p.clone().multiplyScalar(scale));
   const scaled: Poly = { verts, faces: poly.faces.map((f) => [...f]) };
 
-  // Auto-orient each face CCW as seen from outside (normal points away from 0).
+  // Auto-orient each face so its fan winds CCW as seen from outside.
   for (const f of scaled.faces) {
-    const nrm = faceNormal(scaled, f);
-    if (nrm.dot(faceCentroid(scaled, f)) < 0) f.reverse();
+    if (fanNormal(scaled, f).dot(faceCentroid(scaled, f)) < 0) f.reverse();
   }
 
   const centroids = scaled.faces.map((f) => faceCentroid(scaled, f));
   const values = assignOppositeSum(centroids, opts.oppositeSum);
-  const normals = scaled.faces.map((f) => faceNormal(scaled, f));
+  // Outward normal = the centroid direction (unambiguously outward for a convex
+  // solid centred at the origin), used for numeral placement.
+  const normals = centroids.map((c) => c.clone().normalize());
 
   const readAxes: ReadAxis[] = centroids.map((c, i) => ({
     value: values[i],
@@ -356,29 +380,215 @@ function buildFaceShape(opts: BuildOpts): DieShape {
     type,
     readMode: "face",
     radius,
+    inradius: Math.min(...centroids.map((c) => c.length())),
     readAxes,
     rotations: rotationGroup(opts.gens),
     placements,
-    makeGeometry: () => polyGeometry(scaled),
+    makeGeometry: (rounded) => polyGeometry(scaled, rounded),
     makeCollider: () => polyCollider(scaled),
   };
 }
 
-/** Non-indexed flat-shaded mesh: fan-triangulate each face. */
-function polyGeometry(poly: Poly): THREE.BufferGeometry {
+/** Build a flat-shaded mesh from a list of triangles, winding each one outward
+ *  (a convex solid centred at the origin → the outward normal agrees with the
+ *  triangle centroid direction), so callers needn't track winding. */
+function trianglesToGeometry(tris: THREE.Vector3[][]): THREE.BufferGeometry {
   const pos: number[] = [];
-  for (const f of poly.faces) {
-    for (let i = 1; i < f.length - 1; i++) {
-      for (const idx of [f[0], f[i], f[i + 1]]) {
-        const p = poly.verts[idx];
-        pos.push(p.x, p.y, p.z);
-      }
-    }
+  const n = new THREE.Vector3();
+  const cen = new THREE.Vector3();
+  for (const [a, b, c] of tris) {
+    n.subVectors(b, a).cross(cen.subVectors(c, a));
+    cen.copy(a).add(b).add(c);
+    const ordered = n.dot(cen) < 0 ? [a, c, b] : [a, b, c]; // flip inward-facing tris
+    for (const p of ordered) pos.push(p.x, p.y, p.z);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.computeVertexNormals();
+  g.computeVertexNormals(); // non-indexed → flat per-face shading
   return g;
+}
+
+/** Flat-faceted mesh: fan-triangulate each face. */
+function flatGeometry(poly: Poly): THREE.BufferGeometry {
+  const tris: THREE.Vector3[][] = [];
+  for (const f of poly.faces)
+    for (let i = 1; i < f.length - 1; i++)
+      tris.push([poly.verts[f[0]], poly.verts[f[i]], poly.verts[f[i + 1]]]);
+  return trianglesToGeometry(tris);
+}
+
+// ---------- true rounded body ----------
+//
+// The same construction RoundedBoxGeometry uses for the d6, generalized to any
+// convex isohedral solid: shrink the solid so every face plane moves inward by
+// the bevel radius `r`, then offset the whole surface back out by `r` — the
+// Minkowski sum of the inner solid with a sphere. Faces stay flat (and at the
+// original plane distance, so resting height and numerals are unchanged), each
+// edge becomes a true cylinder section, each vertex a true sphere patch. Every
+// vertex carries its exact analytic normal, so the bevel shades perfectly
+// smooth at low tessellation — no facet approximation, no winding guesswork.
+
+const ROUND_SEG = 5; // arc segments per bevel (matches the d6's RoundedBox)
+// Bevel radius as a fraction of the inradius. 0.24 reproduces the d6 exactly:
+// its RoundedBox radius is edge·0.12 = (edge/2)·0.24 = inradius·0.24.
+const ROUND_K = 0.24;
+
+/** Unit directions along the great-circle arc from `n1` to `n2` (inclusive). */
+function arcDirs(
+  n1: THREE.Vector3,
+  n2: THREE.Vector3,
+  seg: number,
+): THREE.Vector3[] {
+  const ang = Math.acos(THREE.MathUtils.clamp(n1.dot(n2), -1, 1));
+  const sn = Math.sin(ang);
+  const out: THREE.Vector3[] = [];
+  for (let j = 0; j <= seg; j++) {
+    const t = j / seg;
+    out.push(
+      ang < EPS
+        ? n1.clone()
+        : n1
+            .clone()
+            .multiplyScalar(Math.sin((1 - t) * ang) / sn)
+            .addScaledVector(n2, Math.sin(t * ang) / sn),
+    );
+  }
+  return out;
+}
+
+/** Each edge (a,b) with the indices of its two adjacent faces. */
+function edgeList(
+  poly: Poly,
+): { a: number; b: number; f1: number; f2: number }[] {
+  const m = new Map<string, { a: number; b: number; f1: number; f2: number }>();
+  poly.faces.forEach((f, fi) => {
+    for (let i = 0; i < f.length; i++) {
+      const a = f[i];
+      const b = f[(i + 1) % f.length];
+      const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+      const e = m.get(key);
+      if (e) e.f2 = fi;
+      else m.set(key, { a, b, f1: fi, f2: -1 });
+    }
+  });
+  return [...m.values()].filter((e) => e.f2 >= 0);
+}
+
+/** The faces incident to vertex `vi`, in rotational order around it — walk
+ *  face→face across the shared edge (vi, next-vertex-after-vi). Exact adjacency,
+ *  no angle sorting to get subtly wrong. */
+function faceCycleAt(poly: Poly, vi: number): number[] {
+  const inc = poly.faces
+    .map((_, fi) => fi)
+    .filter((fi) => poly.faces[fi].includes(vi));
+  const cycle = [inc[0]];
+  while (cycle.length < inc.length) {
+    const cur = cycle[cycle.length - 1];
+    const f = poly.faces[cur];
+    const w = f[(f.indexOf(vi) + 1) % f.length];
+    const next = inc.find(
+      (fi) => fi !== cur && poly.faces[fi].includes(w) && !cycle.includes(fi),
+    );
+    if (next === undefined) break;
+    cycle.push(next);
+  }
+  return cycle;
+}
+
+function roundedGeometry(raw: Poly): THREE.BufferGeometry {
+  // Orient every face CCW-from-outside first: the vertex-cap walk below needs a
+  // consistent half-edge structure (each directed edge in exactly one face).
+  const poly: Poly = {
+    verts: raw.verts,
+    faces: raw.faces.map((f) =>
+      fanNormal(raw, f).dot(faceCentroid(raw, f)) < 0 ? [...f].reverse() : f,
+    ),
+  };
+  // Exact outward unit face-plane normals (faces are planar — tested).
+  const N = poly.faces.map((f) => fanNormal(poly, f));
+  // Face-plane distance — identical for every face of an isohedral die.
+  const d = Math.min(...poly.faces.map((f, i) => N[i].dot(poly.verts[f[0]])));
+  const r = ROUND_K * d;
+  const s = (d - r) / d; // uniform shrink = every face plane in by exactly r
+  const inner = poly.verts.map((p) => p.clone().multiplyScalar(s));
+
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  // Emit one triangle with per-vertex normals, wound outward (for a convex
+  // solid centred at the origin, outward ⇔ geometric normal · centroid > 0).
+  const tri = (
+    pa: THREE.Vector3,
+    pb: THREE.Vector3,
+    pc: THREE.Vector3,
+    na: THREE.Vector3,
+    nb: THREE.Vector3,
+    nc: THREE.Vector3,
+  ) => {
+    const g = new THREE.Vector3()
+      .subVectors(pb, pa)
+      .cross(new THREE.Vector3().subVectors(pc, pa));
+    const cen = new THREE.Vector3().copy(pa).add(pb).add(pc);
+    const P = g.dot(cen) >= 0 ? [pa, pb, pc] : [pa, pc, pb];
+    const Nn = g.dot(cen) >= 0 ? [na, nb, nc] : [na, nc, nb];
+    for (const p of P) pos.push(p.x, p.y, p.z);
+    for (const n of Nn) nrm.push(n.x, n.y, n.z);
+  };
+  const at = (vi: number, u: THREE.Vector3) =>
+    inner[vi].clone().addScaledVector(u, r);
+
+  // 1) Flat faces: the inner face pushed back out by r (lands on the original
+  //    face plane, shrunk toward its centre — numerals stay on it).
+  poly.faces.forEach((f, fi) => {
+    const p = f.map((vi) => at(vi, N[fi]));
+    for (let i = 1; i < p.length - 1; i++)
+      tri(p[0], p[i], p[i + 1], N[fi], N[fi], N[fi]);
+  });
+
+  // 2) Edge bands: a cylinder section along the inner edge, sweeping the normal
+  //    from one face plane to the other. Normals = the swept direction → the
+  //    band shades as a true cylinder.
+  for (const { a, b, f1, f2 } of edgeList(poly)) {
+    const arc = arcDirs(N[f1], N[f2], ROUND_SEG);
+    for (let j = 0; j < ROUND_SEG; j++) {
+      const u0 = arc[j];
+      const u1 = arc[j + 1];
+      tri(at(a, u0), at(b, u0), at(b, u1), u0, u0, u1);
+      tri(at(a, u0), at(b, u1), at(a, u1), u0, u1, u1);
+    }
+  }
+
+  // 3) Vertex caps: a sphere patch fanned from the corner's mean direction to
+  //    the ring of edge-arc directions. The ring reuses the exact arc samples
+  //    the edge bands end on, so the surface is watertight.
+  for (let vi = 0; vi < poly.verts.length; vi++) {
+    const cycle = faceCycleAt(poly, vi);
+    const ring: THREE.Vector3[] = [];
+    for (let i = 0; i < cycle.length; i++) {
+      const arc = arcDirs(
+        N[cycle[i]],
+        N[cycle[(i + 1) % cycle.length]],
+        ROUND_SEG,
+      );
+      for (let j = 0; j < ROUND_SEG; j++) ring.push(arc[j]); // last = next's first
+    }
+    const c = ring
+      .reduce((sum, u) => sum.add(u), new THREE.Vector3())
+      .normalize();
+    for (let k = 0; k < ring.length; k++) {
+      const u0 = ring[k];
+      const u1 = ring[(k + 1) % ring.length];
+      tri(at(vi, c), at(vi, u0), at(vi, u1), c, u0, u1);
+    }
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
+  return g;
+}
+
+function polyGeometry(poly: Poly, rounded: boolean): THREE.BufferGeometry {
+  return rounded ? roundedGeometry(poly) : flatGeometry(poly);
 }
 
 function polyCollider(poly: Poly): CANNON.ConvexPolyhedron {
@@ -391,7 +601,10 @@ function polyCollider(poly: Poly): CANNON.ConvexPolyhedron {
 
 // ---------- the shape table ----------
 
-const R = 0.5; // base circumradius (a d6 is ~1 unit across; DiceScene scales)
+const D6_EDGE = 1.1; // d6 cube edge — matches DiceScene's DIE so d6 is unchanged
+// Polyhedra circumradius ≈ the d6's (edge·√3/2 ≈ 0.95) so a mixed tray reads as
+// one matched set rather than the cube dwarfing the rest.
+const R = D6_EDGE * 0.82;
 
 function cubeShape(): DieShape {
   // d6 keeps the pip layout from orient.ts (fixed) + a rounded-box body.
@@ -403,15 +616,19 @@ function cubeShape(): DieShape {
     quatAbout(v(1, 0, 0), Math.PI / 2),
     quatAbout(v(1, 1, 1), (2 * Math.PI) / 3),
   ]);
-  const S = R * 1.55; // rounded box edge ~matches the other solids' footprint
+  const S = D6_EDGE;
   return {
     type: "d6",
     readMode: "face",
     radius: R,
+    inradius: S / 2,
     readAxes,
     rotations: rot,
     placements: [], // pips, drawn by DiceScene
-    makeGeometry: () => new RoundedBoxGeometry(S, S, S, 5, S * 0.12),
+    makeGeometry: (rounded) =>
+      rounded
+        ? new RoundedBoxGeometry(S, S, S, 5, S * 0.12)
+        : new THREE.BoxGeometry(S, S, S),
     makeCollider: () => new CANNON.Box(new CANNON.Vec3(S / 2, S / 2, S / 2)),
   };
 }
@@ -431,7 +648,6 @@ function faceGens(poly: Poly): THREE.Quaternion[] {
 
 function d10Shape(): DieShape {
   const poly = trapezohedron();
-  const scale = R / poly.verts[0].length();
   // Pole 72° + a horizontal 2-fold through an equatorial edge midpoint → D5.
   const mid = new THREE.Vector3()
     .addVectors(poly.verts[2], poly.verts[7])
@@ -441,15 +657,13 @@ function d10Shape(): DieShape {
     quatAbout(v(0, 1, 0), (2 * Math.PI) / 5),
     quatAbout(mid, Math.PI),
   ];
-  const shape = buildFaceShape({
+  return buildFaceShape({
     type: "d10",
     poly,
     radius: R,
     oppositeSum: 11, // values 1..10 (10 shown as "0"); balanced pairs sum to 11
     gens,
   });
-  void scale;
-  return shape;
 }
 
 function d4Shape(): DieShape {
@@ -458,7 +672,7 @@ function d4Shape(): DieShape {
   const verts = poly.verts.map((p) => p.clone().multiplyScalar(scale));
   const scaled: Poly = { verts, faces: poly.faces.map((f) => [...f]) };
   for (const f of scaled.faces) {
-    if (faceNormal(scaled, f).dot(faceCentroid(scaled, f)) < 0) f.reverse();
+    if (fanNormal(scaled, f).dot(faceCentroid(scaled, f)) < 0) f.reverse();
   }
   // Vertex-read: each vertex carries a value; the up vertex is read.
   const readAxes: ReadAxis[] = verts.map((p, i) => ({
@@ -468,7 +682,7 @@ function d4Shape(): DieShape {
   // Numeral at each face corner = that corner-vertex's value (apex convention).
   const placements: FacePlacement[] = [];
   for (const f of scaled.faces) {
-    const normal = faceNormal(scaled, f);
+    const normal = fanNormal(scaled, f);
     const c = faceCentroid(scaled, f);
     for (const vi of f) {
       const corner = verts[vi];
@@ -485,10 +699,13 @@ function d4Shape(): DieShape {
     type: "d4",
     readMode: "vertex",
     radius: R,
+    inradius: Math.min(
+      ...scaled.faces.map((f) => faceCentroid(scaled, f).length()),
+    ),
     readAxes,
     rotations: rotationGroup(faceGens(poly)),
     placements,
-    makeGeometry: () => polyGeometry(scaled),
+    makeGeometry: (rounded) => polyGeometry(scaled, rounded),
     makeCollider: () => polyCollider(scaled),
   };
 }
