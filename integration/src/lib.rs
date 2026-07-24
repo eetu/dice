@@ -77,6 +77,18 @@ impl Stack {
         Ok(stack)
     }
 
+    /// Stop the backend GRACEFULLY (SIGTERM), so it flushes `DICE_STATE_FILE` on
+    /// shutdown, and reap it. Used by the persistence restart test — the normal
+    /// `Drop` path SIGKILLs, which skips the flush. Idempotent with `Drop` (the
+    /// second `wait`/`kill` there just errors harmlessly on the reaped child).
+    pub fn shutdown_graceful(&mut self) {
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(self.child.id().to_string())
+            .status();
+        let _ = self.child.wait();
+    }
+
     pub async fn get(&self, route: &str) -> reqwest::Response {
         self.client
             .get(format!("{}{route}", self.base))

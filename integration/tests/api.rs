@@ -72,11 +72,11 @@ async fn ws_roll_roundtrip() {
 
     let mut ws = s.ws(code, token).await;
 
-    // First frame is the full snapshot.
+    // First frame is the full snapshot — the default tray is two d6.
     let sync = next_json(&mut ws).await;
     assert_eq!(sync["type"], "sync");
     assert_eq!(sync["state"]["players"].as_array().unwrap().len(), 1);
-    assert_eq!(sync["state"]["diceCount"], 2);
+    assert_eq!(sync["state"]["diceSet"].as_array().unwrap().len(), 2);
 
     // Roll (Alice is the only, current, player).
     ws.send(Message::text(json!({ "type": "roll" }).to_string()))
@@ -95,8 +95,72 @@ async fn ws_roll_roundtrip() {
     let dice = rolled["record"]["dice"].as_array().unwrap();
     assert_eq!(dice.len(), 2);
     for d in dice {
-        let v = d.as_u64().unwrap();
+        assert_eq!(d["kind"], "d6");
+        let v = d["value"].as_u64().unwrap();
         assert!((1..=6).contains(&v), "face out of range: {v}");
     }
     assert_eq!(rolled["record"]["playerId"], alice["playerId"]);
+}
+
+/// A game survives a graceful restart when `DICE_STATE_FILE` is set: the room,
+/// its history, and each player's secret token are flushed on SIGTERM and
+/// reloaded on the next boot, so a reconnecting client re-authenticates and the
+/// game resumes instead of 404-ing.
+#[tokio::test]
+#[ignore = "spawns the backend binary"]
+async fn state_file_survives_graceful_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("state.json");
+    let state_arg = state.to_str().unwrap();
+
+    // Boot 1: create a game, roll once (so there's history), then SIGTERM.
+    let code;
+    let token;
+    let player_id;
+    {
+        let mut s = Stack::start_with(&[("DICE_STATE_FILE", state_arg)])
+            .await
+            .unwrap();
+        let alice = s.create("Alice").await;
+        code = alice["code"].as_str().unwrap().to_string();
+        token = alice["token"].as_str().unwrap().to_string();
+        player_id = alice["playerId"].as_str().unwrap().to_string();
+
+        let mut ws = s.ws(&code, &token).await;
+        assert_eq!(next_json(&mut ws).await["type"], "sync");
+        ws.send(Message::text(json!({ "type": "roll" }).to_string()))
+            .await
+            .unwrap();
+        for _ in 0..10 {
+            if next_json(&mut ws).await["type"] == "rolled" {
+                break;
+            }
+        }
+        drop(ws);
+        s.shutdown_graceful(); // flush to the state file
+    }
+
+    // Boot 2: same state file → the room is restored.
+    let s2 = Stack::start_with(&[("DICE_STATE_FILE", state_arg)])
+        .await
+        .unwrap();
+
+    // The code resolves (didn't expire) and the player + history are back.
+    let snap: Value = s2
+        .get(&format!("/api/games/{code}"))
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(snap["players"].as_array().unwrap().len(), 1);
+    assert_eq!(snap["players"][0]["id"], player_id);
+    assert_eq!(snap["history"].as_array().unwrap().len(), 1);
+    // Restored players start disconnected until their socket reconnects.
+    assert_eq!(snap["players"][0]["connected"], false);
+
+    // The persisted token still authenticates the WS → the game resumes.
+    let mut ws = s2.ws(&code, &token).await;
+    let sync = next_json(&mut ws).await;
+    assert_eq!(sync["type"], "sync");
+    assert_eq!(sync["state"]["history"].as_array().unwrap().len(), 1);
 }
