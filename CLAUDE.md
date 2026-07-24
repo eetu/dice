@@ -106,6 +106,11 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   `DICE_WS_MSGS_PER_SEC` (20). Full env table + the trust-proxy rule in
   `README.md`; rationale in `SECURITY.md`.
 - `just check` = clippy + rustfmt + `yarn validate`. `just test` = cargo + vitest.
+- **Changelog + releases**: add user-visible changes to `CHANGELOG.md` under
+  `[Unreleased]` as they land. `just release (patch|minor|major)` bumps the
+  version everywhere (Cargo workspace + `frontend/package.json` + lockfile),
+  rolls the changelog, commits, tags `vX.Y.Z`, pushes, and publishes the GitHub
+  release — the tag build then rolls the ghcr `X.Y` / `X` / `latest` aliases.
 - Prod: the binary serves `dist/` with an SPA fallback; one origin, port 3040.
 
 ## Out of scope
