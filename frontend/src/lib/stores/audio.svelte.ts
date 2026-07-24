@@ -328,6 +328,25 @@ class DiceAudio {
     this.#note(ctx, tf, 65.41, 0.24, 0.72, 1400, "triangle"); // C2  resolve
   }
 
+  /** A short 8-bit "ta-daa!" — someone scored a real Yatzy (five of a kind).
+   *  A pickup note into a held triumphant C-major hit, in the NES voicing of
+   *  `fanfare` (pulse lead + pulse harmony + triangle bass) but only two beats:
+   *  bigger than a `plop`, smaller than the win fanfare. Plays for everyone. */
+  tadaa(): void {
+    if (this.muted) return;
+    const ctx = this.#ensure();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    // "ta" — the pickup (G5 over C5).
+    this.#note(ctx, t, 784, 0.16, 0.1);
+    this.#note(ctx, t, 523, 0.1, 0.1);
+    // "daa" — the held hit (C6 + E5, triangle C3 underneath).
+    const t2 = t + 0.14;
+    this.#note(ctx, t2, 1047, 0.2, 0.55);
+    this.#note(ctx, t2, 659, 0.12, 0.55);
+    this.#note(ctx, t2, 130.81, 0.22, 0.55, 1400, "triangle");
+  }
+
   /** Start the "dice rattling in a plastic cup" loop, held while the phone is
    *  shaken. Rather than a continuous wash, a look-ahead scheduler fires many
    *  discrete plastic clicks at rapid, irregular intervals (= several dice

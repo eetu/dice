@@ -20,9 +20,7 @@
           <span class="who">{r.playerName}</span>
           <span class="faces">
             {#each r.dice as d, i (i)}
-              <span class="face" class:poly={d.kind !== "d6"} title={d.kind}
-                >{d.value}</span
-              >
+              <span class="face" title={d.kind}>{d.value}</span>
             {/each}
           </span>
           <span class="sum">{r.total}</span>
@@ -104,11 +102,6 @@
     font-family: var(--halo-font-heading);
     font-size: 0.8rem;
     font-variant-numeric: tabular-nums;
-  }
-  /* Polyhedral dice (non-d6) get an accent ring so the tray reads at a glance. */
-  .face.poly {
-    box-shadow: inset 0 0 0 1px var(--halo-accent);
-    color: var(--halo-accent);
   }
   .sum {
     font-weight: 600;

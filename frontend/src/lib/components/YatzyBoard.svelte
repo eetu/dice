@@ -225,6 +225,67 @@
   );
   const focusId = $derived(view?.order[focusIdx] ?? "");
 
+  // Someone filled a scorecard box — detected by diffing the cards between view
+  // updates (works on every client, not just the scorer's). Flash the box for
+  // ~2.5s so the table sees what was chosen, and celebrate a real Yatzy (the
+  // `yatzy` category with points) with a "ta-daa!" for everyone. In paged mode
+  // a co-player's card isn't visible, so briefly flip to it, then follow the
+  // turn as usual. (Created AFTER the turn-snap effect above so the flip wins
+  // the same flush.)
+  let justScored = $state<{ pid: string; cat: YatzyCat } | null>(null);
+  let prevFilled: Map<string, Set<string>> | null = null;
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+  let revertTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    const v = yatzy.view;
+    if (!v) {
+      prevFilled = null;
+      return;
+    }
+    const filled = new Map(
+      v.cards.map((c) => [
+        c.playerId,
+        new Set(c.cells.map((x) => x.category as string)),
+      ]),
+    );
+    let found: { pid: string; cat: YatzyCat; value: number } | null = null;
+    for (const c of v.cards) {
+      const prev = prevFilled?.get(c.playerId);
+      if (!prev) continue; // new player / fresh deal — nothing to diff against
+      for (const cell of c.cells) {
+        if (!prev.has(cell.category)) {
+          found = {
+            pid: c.playerId,
+            cat: cell.category as YatzyCat,
+            value: cell.value,
+          };
+        }
+      }
+    }
+    prevFilled = filled;
+    if (!found) return;
+    justScored = { pid: found.pid, cat: found.cat };
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => (justScored = null), 2600);
+    if (found.cat === "yatzy" && found.value > 0) diceAudio.tadaa();
+    if (paged && found.pid !== myId) {
+      const si = v.order.indexOf(found.pid);
+      if (si >= 0) {
+        focus = si;
+        if (revertTimer) clearTimeout(revertTimer);
+        revertTimer = setTimeout(() => {
+          const cur = yatzy.view;
+          const ci = cur ? cur.order.indexOf(cur.currentPlayerId ?? "") : -1;
+          if (ci >= 0) focus = ci;
+        }, 2200);
+      }
+    }
+  });
+  $effect(() => () => {
+    if (flashTimer) clearTimeout(flashTimer);
+    if (revertTimer) clearTimeout(revertTimer);
+  });
+
   let swipeX = 0;
   function swipeStart(e: PointerEvent) {
     swipeX = e.clientX;
@@ -289,7 +350,12 @@
 {#snippet cell(pid: string, cat: YatzyCat)}
   {@const filled = filledValue(pid, cat)}
   {#if filled !== undefined}
-    <td class="val" class:zero={filled === 0}>{filled}</td>
+    <td
+      class="val"
+      class:zero={filled === 0}
+      class:just={justScored?.pid === pid && justScored?.cat === cat}
+      >{filled}</td
+    >
   {:else if pid === view?.currentPlayerId && canScore}
     <td class="open">
       <button
@@ -309,7 +375,12 @@
 {#snippet pval(pid: string, cat: YatzyCat)}
   {@const filled = filledValue(pid, cat)}
   {#if filled !== undefined}
-    <span class="pv" class:zero={filled === 0}>{filled}</span>
+    <span
+      class="pv"
+      class:zero={filled === 0}
+      class:just={justScored?.pid === pid && justScored?.cat === cat}
+      >{filled}</span
+    >
   {:else if pid === view?.currentPlayerId && canScore}
     <button
       class="pscore"
@@ -792,6 +863,27 @@
     }
     100% {
       box-shadow: 0 0 0 0 transparent;
+    }
+  }
+
+  /* A box someone just scored — an accent flash that fades, so the whole table
+     sees which box was picked (matrix cell + paged row value). */
+  .val.just,
+  .pv.just {
+    border-radius: var(--halo-radius);
+    animation: scoreflash 2.4s ease-out;
+  }
+  @keyframes scoreflash {
+    0% {
+      background: var(--halo-accent);
+      color: var(--halo-on-accent);
+    }
+    45% {
+      background: var(--halo-accent-soft);
+      color: var(--halo-accent);
+    }
+    100% {
+      background: transparent;
     }
   }
 

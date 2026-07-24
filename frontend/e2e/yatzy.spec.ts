@@ -38,6 +38,9 @@ test("yatzy: create, join, roll, score, turn passes (mobile)", async ({
   await alice.locator("button.roll").click();
   await alice.locator("button.score").first().click();
 
+  // Bob's board flashes the box Alice just scored (the .just accent flash).
+  await expect(bob.locator(".val.just")).toBeVisible();
+
   // Turn passed to Bob: his roll is live, Alice's is not.
   await expect(bob.locator("button.roll")).toBeEnabled();
   await expect(alice.locator("button.roll")).toBeDisabled();
