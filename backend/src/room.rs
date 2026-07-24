@@ -955,6 +955,49 @@ impl Room {
         self.turn_idx = (self.turn_idx + 1) % n;
     }
 
+    /// Manual "skip the current player" override (used when someone has dropped
+    /// and the table can't wait). Advances whichever turn pointer the active mode
+    /// uses — the free-mode `turn_idx` OR the running match's own turn — and
+    /// broadcasts the affected view. In a match the skipped player forfeits their
+    /// turn (a fresh turn is dealt to the next player), the same as if they'd
+    /// finished it. No-op past the end of a match / in a non-turn phase.
+    fn skip_turn(&mut self) {
+        match self.mode {
+            Mode::Free => {
+                self.advance_turn();
+                self.broadcast_sync();
+            }
+            Mode::Liars => {
+                if let Some(g) = self.liars.as_mut() {
+                    if g.phase == LiarsPhase::Bidding {
+                        if let Some(next) = g.next_active(g.turn) {
+                            g.turn = next;
+                        }
+                    }
+                }
+                self.broadcast_liars();
+            }
+            Mode::Yatzy => {
+                if let Some(g) = self.yatzy.as_mut() {
+                    if !g.over && !g.order.is_empty() {
+                        g.turn = (g.turn + 1) % g.order.len();
+                        g.reset_turn();
+                    }
+                }
+                self.broadcast_yatzy();
+            }
+            Mode::Farkle => {
+                if let Some(g) = self.farkle.as_mut() {
+                    if !g.over && !g.order.is_empty() {
+                        g.turn = (g.turn + 1) % g.order.len();
+                        g.reset_turn();
+                    }
+                }
+                self.broadcast_farkle();
+            }
+        }
+    }
+
     /// Apply a client message from `actor_id`, mutating state and broadcasting.
     pub fn apply(&mut self, actor_id: &str, msg: ClientMsg) {
         self.touch();
@@ -987,10 +1030,7 @@ impl Room {
                 self.deck = sanitize_slug(deck, "felt-green");
                 self.broadcast_sync();
             }
-            ClientMsg::SkipTurn => {
-                self.advance_turn();
-                self.broadcast_sync();
-            }
+            ClientMsg::SkipTurn => self.skip_turn(),
             ClientMsg::SetMode { mode } => self.set_mode(&mode),
             ClientMsg::Bid { quantity, face } => self.liars_bid(actor_id, quantity, face),
             ClientMsg::CallLiar => self.liars_call(actor_id),
@@ -1907,6 +1947,36 @@ mod tests {
         room.apply(&id[0], ClientMsg::Roll); // lands on the offline player 1
         room.apply(&id[0], ClientMsg::SkipTurn); // force past → player 2
         assert_eq!(room.current_player_id().as_deref(), Some(id[2].as_str()));
+    }
+
+    #[test]
+    fn skip_turn_advances_liars_seat() {
+        // In a match, SkipTurn must move the match's OWN turn pointer (not the
+        // unused free-mode turn_idx) so a dropped bidder can be forced past.
+        let (mut room, id) = start_liars_room(3);
+        let before = room.liars.as_ref().unwrap().current_id();
+        room.apply(&id[0], ClientMsg::SkipTurn);
+        let after = room.liars.as_ref().unwrap().current_id();
+        assert!(after.is_some());
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn skip_turn_advances_yatzy_turn() {
+        let (mut room, id) = start_yatzy_room(3);
+        let before = room.yatzy.as_ref().unwrap().turn;
+        room.apply(&id[0], ClientMsg::SkipTurn);
+        let after = room.yatzy.as_ref().unwrap().turn;
+        assert_eq!(after, (before + 1) % 3);
+    }
+
+    #[test]
+    fn skip_turn_advances_farkle_turn() {
+        let (mut room, id) = start_farkle_room(3);
+        let before = room.farkle.as_ref().unwrap().turn;
+        room.apply(&id[0], ClientMsg::SkipTurn);
+        let after = room.farkle.as_ref().unwrap().turn;
+        assert_eq!(after, (before + 1) % 3);
     }
 
     #[test]

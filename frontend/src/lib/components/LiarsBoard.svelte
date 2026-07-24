@@ -16,9 +16,11 @@
     onBid: (quantity: number, face: number) => void;
     onCall: () => void;
     onNextRound: () => void;
+    onSkip: () => void;
     onNewMatch: () => void;
   };
-  let { myId, onBid, onCall, onNextRound, onNewMatch }: Props = $props();
+  let { myId, onBid, onCall, onNextRound, onSkip, onNewMatch }: Props =
+    $props();
 
   // 3x3 pip layout per face (grid cells 1..9, row-major).
   const CELLS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -43,6 +45,14 @@
   const opponents = $derived(
     (view?.players ?? []).filter((p) => p.playerId !== myId),
   );
+  // The current player has dropped: the table can't progress, so offer a manual
+  // skip (matches free mode — we wait by default, skip is the escape hatch).
+  const currentOffline = $derived.by(() => {
+    const cid = view?.currentPlayerId;
+    if (!cid || cid === myId) return false;
+    const p = players.find((x) => x.id === cid);
+    return !!p && !p.connected;
+  });
 
   // A fresh hand was dealt (match start or a new round) whenever we (re-)enter the
   // bidding phase — tumble your cup and play the roll sound.
@@ -217,6 +227,9 @@
                 ? i18n.m.yourTurn
                 : i18n.m.waitingFor(nameOf(view.currentPlayerId))}
             </span>
+            {#if currentOffline}
+              <button class="skip" onclick={onSkip}>{i18n.m.skip}</button>
+            {/if}
           </div>
         {/if}
       </div>
@@ -425,6 +438,21 @@
   .turnline.mine {
     color: var(--halo-accent);
     font-weight: 600;
+  }
+  /* Manual skip — only shown while the current bidder is offline. */
+  .skip {
+    margin-top: 0.4rem;
+    background: var(--halo-bg-light);
+    border: 1px solid var(--halo-border);
+    color: var(--halo-text-muted);
+    border-radius: var(--halo-radius-pill);
+    padding: 0.4em 1.1em;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .skip:hover {
+    color: var(--halo-accent);
+    border-color: var(--halo-accent);
   }
   .in-play {
     flex-shrink: 0;

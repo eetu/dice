@@ -30,6 +30,9 @@ export const fi: Catalog = {
   leaveTitle: "Poistutaanko pelistä?",
   leaveBody:
     "Poistut tästä pelistä. Muut jatkavat — voit liittyä uudelleen koodilla.",
+  leaveTitleLast: "Poistutaanko ja lopetetaanko peli?",
+  leaveBodyLast:
+    "Olet viimeinen pelaaja — poistuminen lopettaa pelin lopullisesti ja vapauttaa koodin.",
   connecting: "Yhdistetään…",
   connected: "yhteydessä",
   disconnected: "ei yhteyttä",

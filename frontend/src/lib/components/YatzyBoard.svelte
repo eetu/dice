@@ -20,9 +20,10 @@
     onRoll: () => void;
     onHold: (index: number) => void;
     onScore: (category: YatzyCat) => void;
+    onSkip: () => void;
     onNewMatch: () => void;
   };
-  let { myId, onRoll, onHold, onScore, onNewMatch }: Props = $props();
+  let { myId, onRoll, onHold, onScore, onSkip, onNewMatch }: Props = $props();
 
   // 3x3 pip layout per face (grid cells 1..9, row-major) — same as LiarsBoard.
   const CELLS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -165,6 +166,13 @@
 
   const isMyTurn = $derived(!!view && !!myId && view.currentPlayerId === myId);
   const iPlay = $derived(!!view && !!myId && view.order.includes(myId));
+  // Current roller has dropped → offer a manual skip so the table can progress.
+  const currentOffline = $derived.by(() => {
+    const cid = view?.currentPlayerId;
+    if (!cid || cid === myId) return false;
+    const p = players.find((x) => x.id === cid);
+    return !!p && !p.connected;
+  });
   const canHold = $derived(
     !!view && isMyTurn && view.rolled && view.rollsLeft > 0,
   );
@@ -491,6 +499,10 @@
       </div>
 
       <p class="status" class:mine={isMyTurn}>{status}</p>
+
+      {#if currentOffline}
+        <button class="skip" onclick={onSkip}>{i18n.m.skip}</button>
+      {/if}
 
       {#if iPlay && !view.over}
         <button
@@ -847,6 +859,20 @@
   .status.mine {
     color: var(--halo-accent);
     font-weight: 600;
+  }
+  /* Manual skip — only shown while the current roller is offline. */
+  .skip {
+    background: var(--halo-bg-light);
+    border: 1px solid var(--halo-border);
+    color: var(--halo-text-muted);
+    border-radius: var(--halo-radius-pill);
+    padding: 0.4em 1.1em;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .skip:hover {
+    color: var(--halo-accent);
+    border-color: var(--halo-accent);
   }
   .roll {
     width: min(20rem, 100%);

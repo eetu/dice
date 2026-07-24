@@ -29,6 +29,9 @@ export const en = {
   leaveTitle: "Leave the game?",
   leaveBody:
     "You'll leave this game. Others keep playing — rejoin any time with the code.",
+  leaveTitleLast: "Leave and end the game?",
+  leaveBodyLast:
+    "You're the last player — leaving ends the game for good and frees the code.",
   connecting: "Connecting…",
   connected: "connected",
   disconnected: "disconnected",

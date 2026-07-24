@@ -139,8 +139,21 @@ async fn handle_socket(
                         // Leave removes the player; close the socket too so an
                         // ex-member can't keep acting / keep the room alive.
                         let leaving = matches!(msg, ClientMsg::Leave);
-                        room.lock().unwrap().apply(&my_id, msg);
+                        // Apply under the room lock, then read whether that was the
+                        // last player — dropping the guard before touching the
+                        // registry (never hold two room locks at once).
+                        let empty = {
+                            let mut r = room.lock().unwrap();
+                            r.apply(&my_id, msg);
+                            leaving && r.player_count() == 0
+                        };
                         if leaving {
+                            // The last player left → destroy the room now, rather
+                            // than leaving an empty zombie around until the TTL
+                            // reaper. Rejoining the code then 404s (fresh start).
+                            if empty {
+                                st.rooms.lock().unwrap().remove(&code);
+                            }
                             break;
                         }
                     }

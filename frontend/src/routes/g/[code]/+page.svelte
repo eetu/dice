@@ -48,6 +48,9 @@
 
   const snap = $derived(game.snapshot);
   const players = $derived(snap?.players ?? []);
+  // Leaving as the only player destroys the room (backend removes an emptied
+  // room) — the confirm dialog says so instead of "others keep playing".
+  const lastPlayer = $derived(players.length <= 1);
   const currentPlayer = $derived(snap ? (players[snap.turnIdx] ?? null) : null);
   const isMyTurn = $derived(!!myId && snap?.currentPlayerId === myId);
   const currentOffline = $derived(!!currentPlayer && !currentPlayer.connected);
@@ -319,6 +322,7 @@
           onBid={bid}
           onCall={callLiar}
           onNextRound={nextRound}
+          onSkip={skip}
           onNewMatch={() => setMode("liars")}
         />
       </div>
@@ -329,6 +333,7 @@
           onRoll={yatzyRoll}
           onHold={yatzyHold}
           onScore={yatzyScore}
+          onSkip={skip}
           onNewMatch={() => setMode("yatzy")}
         />
       </div>
@@ -340,6 +345,7 @@
           onSelect={farkleSelect}
           onSetAside={farkleSetAside}
           onBank={farkleBank}
+          onSkip={skip}
           onNewMatch={() => setMode("farkle")}
         />
       </div>
@@ -507,10 +513,12 @@
 
   <Modal
     open={confirmLeave}
-    label={i18n.m.leaveTitle}
+    label={lastPlayer ? i18n.m.leaveTitleLast : i18n.m.leaveTitle}
     onClose={() => (confirmLeave = false)}
   >
-    <p class="confirm-body">{i18n.m.leaveBody}</p>
+    <p class="confirm-body">
+      {lastPlayer ? i18n.m.leaveBodyLast : i18n.m.leaveBody}
+    </p>
     <div class="confirm-actions">
       <button class="ghost" onclick={() => (confirmLeave = false)}>
         {i18n.m.cancel}

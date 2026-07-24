@@ -139,6 +139,7 @@
         maxlength="5"
         autocapitalize="characters"
         autocomplete="off"
+        autocorrect="off"
         spellcheck="false"
       />
       <button type="submit" disabled={busy}>{i18n.m.join}</button>

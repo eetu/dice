@@ -20,10 +20,18 @@
     onSelect: (keep: number[]) => void;
     onSetAside: (keep: number[]) => void;
     onBank: () => void;
+    onSkip: () => void;
     onNewMatch: () => void;
   };
-  let { myId, onRoll, onSelect, onSetAside, onBank, onNewMatch }: Props =
-    $props();
+  let {
+    myId,
+    onRoll,
+    onSelect,
+    onSetAside,
+    onBank,
+    onSkip,
+    onNewMatch,
+  }: Props = $props();
 
   const CELLS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   const PIPS: Record<number, number[]> = {
@@ -48,6 +56,13 @@
 
   const isMyTurn = $derived(!!view && !!myId && view.currentPlayerId === myId);
   const canPick = $derived(!!view && isMyTurn && view.mustPick && !view.busted);
+  // Current player has dropped → offer a manual skip so the table can progress.
+  const currentOffline = $derived.by(() => {
+    const cid = view?.currentPlayerId;
+    if (!cid || cid === myId) return false;
+    const p = players.find((x) => x.id === cid);
+    return !!p && !p.connected;
+  });
 
   // The selection is server state, broadcast like Yatzy holds, so everyone sees
   // which dice the current player is picking. Derive the indices from the view;
@@ -185,6 +200,9 @@
     <!-- Sticky action footer -->
     <div class="tray">
       <p class="status" class:mine={isMyTurn}>{status}</p>
+      {#if currentOffline}
+        <button class="skip" onclick={onSkip}>{i18n.m.skip}</button>
+      {/if}
       {#if isMyTurn}
         <div class="actions">
           {#if view.busted}
@@ -378,6 +396,21 @@
   .status.mine {
     color: var(--halo-accent);
     font-weight: 600;
+  }
+  /* Manual skip — only shown while the current player is offline. */
+  .skip {
+    align-self: center;
+    background: var(--halo-bg-light);
+    border: 1px solid var(--halo-border);
+    color: var(--halo-text-muted);
+    border-radius: var(--halo-radius-pill);
+    padding: 0.4em 1.1em;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .skip:hover {
+    color: var(--halo-accent);
+    border-color: var(--halo-accent);
   }
   .actions {
     display: flex;
