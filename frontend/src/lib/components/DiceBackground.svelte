@@ -164,9 +164,15 @@
     };
   });
 
-  // Freeze/resume the shimmer as the route flips between lobby and game.
+  // Freeze/resume the shimmer as the route flips between lobby and game. On
+  // freeze, ALSO drop interactivity and repaint once — otherwise whatever
+  // pointer glint existed at that moment is baked into the static frame and
+  // sits there like a stuck highlight (glaring under the win spotlight).
   $effect(() => {
-    bg?.update({ animate: live });
+    if (!bg) return;
+    const fine = window.matchMedia("(pointer: fine)").matches;
+    bg.update({ animate: live, interactive: live && fine });
+    if (!live) bg.refresh(); // repaint the frozen frame glint-free
   });
 
   // Re-theme in place when the light/dark theme flips. tick() defers the refresh

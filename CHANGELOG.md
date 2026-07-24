@@ -12,6 +12,9 @@ versions follow semver. Add entries under **[Unreleased]** as changes land —
 - The win screen's glow is a clean centered spotlight (pure CSS) — the old
   drifting blob wash read as a pointer glint stuck over the dark backdrop on
   desktop, and cost a second canvas layer.
+- The ambient dice backdrop no longer freezes with a stale pointer glint baked
+  into the frame when entering a game (interactivity now drops and the frame
+  repaints glint-free on freeze).
 
 ## [1.0.1] - 2026-07-24
 
