@@ -9,6 +9,8 @@ versions follow semver. Add entries under **[Unreleased]** as changes land —
 
 <!-- Add changes here as they land. -->
 
+## [1.0.3] - 2026-07-27
+
 ### Fixes
 
 - **An invite link could fail on Android with a blank page and no explanation.**
