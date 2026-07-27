@@ -37,44 +37,59 @@ impl Stack {
             static_tmp.path().join("index.html"),
             "<html><body>dice</body></html>",
         )?;
-
-        let port = free_port()?;
-        let base = format!("http://127.0.0.1:{port}");
-
-        let mut cmd = Command::new(bin_path());
-        cmd.env("DICE_BIND", format!("127.0.0.1:{port}"))
-            .env("STATIC_DIR", static_tmp.path())
-            .env("RUST_LOG", "warn");
-        for (k, v) in env {
-            cmd.env(k, v);
-        }
-        let child = cmd.spawn()?;
+        // …plus one hashed build artifact, so the SPA-serving tests can tell a
+        // present asset (immutable) from a missing one (404, never the shell).
+        let app_dir = static_tmp.path().join("_app/immutable/chunks");
+        std::fs::create_dir_all(&app_dir)?;
+        std::fs::write(app_dir.join("real.js"), "export const x = 1;\n")?;
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .build()?;
 
-        let mut up = false;
-        for _ in 0..200 {
-            if let Ok(r) = client.get(format!("{base}/status")).send().await {
-                if r.status().is_success() {
-                    up = true;
-                    break;
-                }
+        // `free_port` can only reserve a port by binding then releasing it, so two
+        // stacks starting concurrently can pick the same number and one loses the
+        // race to bind (it exits, and we'd wait out the poll for nothing). Retry
+        // on a fresh port instead of failing the test — the whole `#[ignore]`d
+        // suite spawns a backend per test, so this is a routine collision.
+        let mut last_err = String::from("backend did not come up");
+        for _ in 0..3 {
+            let port = free_port()?;
+            let base = format!("http://127.0.0.1:{port}");
+
+            let mut cmd = Command::new(bin_path());
+            cmd.env("DICE_BIND", format!("127.0.0.1:{port}"))
+                .env("STATIC_DIR", static_tmp.path())
+                .env("RUST_LOG", "warn");
+            for (k, v) in env {
+                cmd.env(k, v);
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            let mut child = cmd.spawn()?;
+
+            let mut up = false;
+            for _ in 0..100 {
+                if let Ok(r) = client.get(format!("{base}/status")).send().await {
+                    if r.status().is_success() {
+                        up = true;
+                        break;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            if up {
+                return Ok(Stack {
+                    child,
+                    base,
+                    port,
+                    client,
+                    _static_tmp: static_tmp,
+                });
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+            last_err = format!("backend on :{port} did not come up within 5s");
         }
-        let stack = Stack {
-            child,
-            base,
-            port,
-            client,
-            _static_tmp: static_tmp,
-        };
-        if !up {
-            anyhow::bail!("backend did not come up within 10s");
-        }
-        Ok(stack)
+        anyhow::bail!("{last_err}")
     }
 
     /// Stop the backend GRACEFULLY (SIGTERM), so it flushes `DICE_STATE_FILE` on

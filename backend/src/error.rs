@@ -16,6 +16,8 @@ pub enum AppError {
     Busy,
     #[error("too many requests")]
     TooMany,
+    #[error("bad request")]
+    BadRequest,
 }
 
 impl IntoResponse for AppError {
@@ -25,6 +27,7 @@ impl IntoResponse for AppError {
             AppError::RoomFull => (StatusCode::CONFLICT, self.to_string()),
             AppError::Busy => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             AppError::TooMany => (StatusCode::TOO_MANY_REQUESTS, self.to_string()),
+            AppError::BadRequest => (StatusCode::BAD_REQUEST, self.to_string()),
         };
         (code, Json(json!({ "error": msg }))).into_response()
     }

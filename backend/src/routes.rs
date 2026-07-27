@@ -20,6 +20,8 @@ use crate::AppState;
 /// Hard cap on request bodies. The only bodies are a tiny `{ name }` JSON; this
 /// keeps an un-authed client from forcing a large allocation on POST.
 const BODY_LIMIT: usize = 16 * 1024;
+/// Cap for `POST /api/client-error` — a `kind`, a truncated message and a URL.
+const CLIENT_ERROR_LIMIT: usize = 1024;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -27,6 +29,12 @@ pub fn router(state: AppState) -> Router {
         .route("/api/games", post(create_game))
         .route("/api/games/{code}", get(get_game))
         .route("/api/games/{code}/join", post(join_game))
+        // Browser error reports. Route-scoped body cap: the global 16 KiB is for
+        // game payloads and is far too generous for a fixed four-field record.
+        .route(
+            "/api/client-error",
+            post(client_error).layer(DefaultBodyLimit::max(CLIENT_ERROR_LIMIT)),
+        )
         .route("/ws/games/{code}", get(ws_handler))
         .fallback(get(serve_spa))
         // Layers wrap every route above (incl. the SPA fallback) so the CSP is
@@ -170,7 +178,98 @@ async fn status(State(st): State<AppState>) -> Json<serde_json::Value> {
     }))
 }
 
+// ---------- client error reports ----------
+
+/// The closed set of things the browser can report. It becomes a metric
+/// attribute, so the cardinality must be bounded — hence a match, not a string
+/// passthrough. Mirrors `ReportKind` in `frontend/src/lib/report.ts`; the
+/// integration test asserts every one of them is accepted, because a drift here
+/// silently 400s reports exactly when something is already broken.
+///
+/// Never started: `boot` `noEsm` `chunk` `storage`.
+/// Started, then broke: `runtime` `render` `route` `ws` `join`.
+const CLIENT_ERROR_KINDS: [&str; 9] = [
+    "boot", "noEsm", "chunk", "storage", "runtime", "render", "route", "ws", "join",
+];
+
+#[derive(Deserialize)]
+struct ClientErrorBody {
+    kind: String,
+    message: Option<String>,
+    url: Option<String>,
+}
+
+/// Trim attacker-controlled text down to something safe to log: no control
+/// characters (log injection / forged lines), no newlines, hard length cap.
+fn sanitize(s: &str, max: usize) -> String {
+    s.chars()
+        .filter(|c| !c.is_control())
+        .take(max)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+/// `POST /api/client-error` — the browser reporting that it couldn't start or
+/// couldn't connect. Un-authed like everything else here, so it's rate limited
+/// per IP, body-capped, and every field is a closed enum or sanitized text.
+///
+/// Why it exists: a blank page can't describe itself, and the report we actually
+/// got ("it didn't work on Android") was unactionable. This turns the next one
+/// into a counter plus a searchable log line with a real User-Agent.
+async fn client_error(
+    State(st): State<AppState>,
+    ClientIp(ip): ClientIp,
+    headers: axum::http::HeaderMap,
+    body: Json<ClientErrorBody>,
+) -> Result<StatusCode, AppError> {
+    if !st.guard.client_error.allow(ip) {
+        return Err(AppError::TooMany);
+    }
+    // An unknown kind is dropped, never recorded — otherwise anyone could mint
+    // metric label values.
+    let Some(kind) = CLIENT_ERROR_KINDS.iter().find(|k| **k == body.kind) else {
+        return Err(AppError::BadRequest);
+    };
+    let ua = headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| sanitize(v, 200))
+        .unwrap_or_default();
+    let message = body
+        .message
+        .as_deref()
+        .map(|m| sanitize(m, 200))
+        .unwrap_or_default();
+    let url = body
+        .url
+        .as_deref()
+        .map(|u| sanitize(u, 200))
+        .unwrap_or_default();
+
+    crate::telemetry::metrics()
+        .client_errors
+        .add(1, &crate::telemetry::attr("kind", kind));
+    // Exported as an OTLP log record when telemetry is on (see telemetry.rs);
+    // otherwise it's just a local log line.
+    tracing::warn!(
+        kind = %kind,
+        message = %message,
+        url = %url,
+        ua = %ua,
+        "client error"
+    );
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ---------- SPA serving (frontend-agnostic) ----------
+
+/// The SvelteKit build directory (`frontend/svelte.config.js` → `appDir`, default
+/// `_app`). Everything under it is a content-hashed build artifact: it either
+/// exists or it's gone, and it must NEVER fall through to the HTML shell.
+const APP_DIR: &str = "_app/";
+/// Hashed filenames change on every build, so the bytes behind a given URL never do.
+const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
 /// Serve a real built asset under `static_dir`, else `index.html` with 200 so
 /// the client router owns the route. canonicalize + starts_with rejects `..`.
@@ -183,13 +282,41 @@ async fn serve_spa(State(state): State<AppState>, uri: Uri) -> Response {
             if c.starts_with(&b) && c.is_file() {
                 if let Ok(bytes) = tokio::fs::read(&c).await {
                     let mime = mime_guess::from_path(&c).first_or_octet_stream();
-                    return ([(header::CONTENT_TYPE, mime.as_ref())], bytes).into_response();
+                    let cache = if rel.starts_with(APP_DIR) {
+                        IMMUTABLE
+                    } else {
+                        // Icons/manifest keep their names across builds — a short
+                        // TTL, so a new icon isn't pinned for a year.
+                        "public, max-age=3600"
+                    };
+                    return (
+                        [
+                            (header::CONTENT_TYPE, mime.as_ref()),
+                            (header::CACHE_CONTROL, cache),
+                        ],
+                        bytes,
+                    )
+                        .into_response();
                 }
             }
         }
+        // A missing build artifact is a 404, never the shell. Returning
+        // `index.html` here (status 200, `text/html`) meant a client holding a
+        // stale shell asked for a chunk that no longer exists and got HTML, which
+        // the browser refuses to execute as a module: a blank page with nothing
+        // to report. Worse, the version poll then reload-looped on it.
+        if rel.starts_with(APP_DIR) {
+            return (StatusCode::NOT_FOUND, "not found").into_response();
+        }
     }
     match tokio::fs::read_to_string(base.join("index.html")).await {
-        Ok(html) => Html(html).into_response(),
+        // `no-cache` = always revalidate. The shell names the hashed chunks, so a
+        // cached one outliving its deploy is exactly the failure above.
+        Ok(html) => (
+            [(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"))],
+            Html(html),
+        )
+            .into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "not found").into_response(),
     }
 }

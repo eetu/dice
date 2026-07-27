@@ -4,13 +4,14 @@
   import { browser } from "$app/environment";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import { api, ApiError, type Mode } from "$lib/api";
+  import { api, type FailReason, failReason, type Mode } from "$lib/api";
   import LangToggle from "$lib/components/LangToggle.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import QrScanner from "$lib/components/QrScanner.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import Wordmark from "$lib/components/Wordmark.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
+  import { storage } from "$lib/storage";
   import { session } from "$lib/stores/session.svelte";
 
   let name = $state(session.name);
@@ -41,10 +42,20 @@
         token: creds.token,
       });
       await goto(resolve("/g/[code]", { code: creds.code }));
-    } catch {
-      error = i18n.m.errCreate;
+    } catch (e) {
+      error = failMessage(e);
       busy = false;
     }
+  }
+
+  /** One phrasing per real cause, shared by create and join (api.ts classifies).
+   *  "Couldn't do it, try again" told nobody anything — least of all whether the
+   *  problem was their network, the code, or a full room. */
+  function failMessage(e: unknown, code?: string): string {
+    const reason: FailReason = failReason(e);
+    if (reason === "notfound") return i18n.m.errNoGame(code ?? "");
+    const { title, body } = i18n.m.joinFail[reason];
+    return `${title} — ${body}`;
   }
 
   function onScanned(code: string) {
@@ -67,10 +78,7 @@
       });
       await goto(resolve("/g/[code]", { code: creds.code }));
     } catch (e) {
-      error =
-        e instanceof ApiError && e.status === 404
-          ? i18n.m.errNoGame(code)
-          : i18n.m.errJoin;
+      error = failMessage(e, code);
       busy = false;
     }
   }
@@ -147,6 +155,12 @@
 
     {#if error}
       <p class="error" role="alert">{error}</p>
+    {/if}
+
+    <!-- Site data blocked (in-app browser, "block all cookies"): the app works,
+      it just can't remember anything. Say so, or it reads as a bug. -->
+    {#if storage.blocked}
+      <p class="hint">{i18n.m.storageBlocked}</p>
     {/if}
   </main>
 
@@ -323,6 +337,12 @@
     margin: 0;
     color: var(--halo-error);
     font-size: 0.9rem;
+    text-align: center;
+  }
+  .hint {
+    margin: 0;
+    color: var(--halo-text-muted);
+    font-size: 0.8rem;
     text-align: center;
   }
   @media (max-width: 640px) {

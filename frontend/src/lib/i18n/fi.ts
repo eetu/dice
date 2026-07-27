@@ -18,10 +18,10 @@ export const fi: Catalog = {
   scanDenied: "Kameran käyttö estetty — salli se asetuksista",
   scanNoCam: "Kameraa ei löytynyt",
   joinPromptTitle: "Valitse nimi liittyäksesi",
-  errCreate: "Pelin luonti epäonnistui — onko palvelin käynnissä?",
   errNoGame: (code: string) =>
     `Peliä "${code}" ei löydy — se on ehkä vanhentunut.`,
-  errJoin: "Liittyminen epäonnistui — yritä uudelleen.",
+  storageBlocked:
+    "Selaimesi estää sivustodatan, joten nimeäsi tai paikkaasi ei muisteta sivun latauksen jälkeen. Pelaaminen toimii silti.",
 
   // Header + notices
   settings: "Asetukset",
@@ -45,8 +45,50 @@ export const fi: Catalog = {
   endedTitle: "Peli päättyi",
   endedBody: (code: string) =>
     `Peli ${code} ei ole enää saatavilla — se vanhentui tai palvelin käynnistyi uudelleen (pelejä ei tallenneta). Aloita uusi peli.`,
-  errorTitle: "Yhteys epäonnistui",
-  errorBody: "Jotain meni pieleen palvelimeen yhdistäessä.",
+  joinFail: {
+    notfound: {
+      title: "Peliä ei löydy",
+      body: "Koodia ei ole olemassa tai se on vanhentunut.",
+    },
+    full: {
+      title: "Peli on täynnä",
+      body: "Pelissä on jo suurin sallittu määrä pelaajia. Pyydä jotakuta poistumaan tai aloita uusi peli.",
+    },
+    busy: {
+      title: "Palvelin on täynnä",
+      body: "Kapasiteetti on juuri nyt täynnä. Yritä hetken kuluttua uudelleen.",
+    },
+    throttled: {
+      title: "Liian monta yritystä",
+      body: "Verkostasi tuli liian monta yritystä peräkkäin. Odota minuutti ja yritä uudelleen.",
+    },
+    offline: {
+      title: "Ei verkkoyhteyttä",
+      body: "Laitteellasi ei ole verkkoyhteyttä. Tarkista se ja yritä uudelleen.",
+    },
+    timeout: {
+      title: "Palvelin ei vastannut",
+      body: "Vastaus kesti liian kauan. Palvelin voi olla käynnistymässä uudelleen.",
+    },
+    unreachable: {
+      title: "Palvelimeen ei saada yhteyttä",
+      body: "Verkkosi toimii, mutta palvelin ei vastaa. Se voi olla alhaalla tai käynnistymässä uudelleen.",
+    },
+    wsRefused: {
+      title: "Palvelin on kiireinen",
+      body: "Palvelin toimii, mutta ei ota juuri nyt uusia yhteyksiä. Yritä pian uudelleen.",
+    },
+    unknown: {
+      title: "Yhteys epäonnistui",
+      body: "Jotain meni pieleen palvelimeen yhdistäessä.",
+    },
+  },
+  staleSeat:
+    "Vanha paikkasi tässä pelissä on poissa — liityit uutena pelaajana.",
+  crashTitle: "Jotain hajosi",
+  crashBody:
+    "Sovellus törmäsi virheeseen, josta se ei toipunut. Uudelleenyritys yleensä korjaa asian — jos ei, lähetä alla olevat tiedot linkin jakajalle.",
+  reload: "Lataa uudelleen",
 
   // Dice stage
   yourTurn: "Sinun vuorosi",
@@ -136,6 +178,7 @@ export const fi: Catalog = {
     isYou ? "Tarjoat" : `${name} tarjoaa`,
   nextRound: "Seuraava kierros",
   spectating: "Olet ulkona — seuraat peliä",
+  liarsNeedsOpponent: "Odotetaan toista pelaajaa — itseään ei voi bluffata",
   bidLabel: (q: number) => `Tarjoa ${q} ×`,
   liar: "Valehtelija!",
   you: "Sinä",

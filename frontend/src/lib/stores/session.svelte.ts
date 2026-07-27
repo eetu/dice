@@ -3,14 +3,15 @@
 // and the credentials per game code, so a refresh or revisit re-attaches as the
 // same player instead of spawning a duplicate.
 
+import { storage } from "$lib/storage";
+
 const NAME_KEY = "dice:name";
 const credKey = (code: string) => `dice:game:${code.toUpperCase()}`;
 
 export type Creds = { playerId: string; token: string };
 
 function loadName(): string {
-  if (typeof localStorage === "undefined") return "";
-  return localStorage.getItem(NAME_KEY) ?? "";
+  return storage.get(NAME_KEY) ?? "";
 }
 
 class Session {
@@ -18,12 +19,11 @@ class Session {
 
   setName(n: string): void {
     this.name = n;
-    if (typeof localStorage !== "undefined") localStorage.setItem(NAME_KEY, n);
+    storage.set(NAME_KEY, n);
   }
 
   credsFor(code: string): Creds | null {
-    if (typeof localStorage === "undefined") return null;
-    const raw = localStorage.getItem(credKey(code));
+    const raw = storage.get(credKey(code));
     if (!raw) return null;
     try {
       const v = JSON.parse(raw);
@@ -37,14 +37,11 @@ class Session {
   }
 
   saveCreds(code: string, creds: Creds): void {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(credKey(code), JSON.stringify(creds));
-    }
+    storage.set(credKey(code), JSON.stringify(creds));
   }
 
   clearCreds(code: string): void {
-    if (typeof localStorage !== "undefined")
-      localStorage.removeItem(credKey(code));
+    storage.remove(credKey(code));
   }
 }
 

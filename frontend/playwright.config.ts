@@ -25,6 +25,8 @@ export default defineConfig({
       // later specs.
       DICE_RL_CREATE_PER_MIN: "1000",
       DICE_RL_JOIN_PER_MIN: "1000",
+      // The error-reporting specs deliberately provoke failures, which beacon.
+      DICE_RL_CLIENT_ERR_PER_MIN: "1000",
     },
     url: "http://127.0.0.1:3099/status",
     reuseExistingServer: true,

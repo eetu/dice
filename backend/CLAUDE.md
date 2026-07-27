@@ -27,17 +27,25 @@ token secrecy).
   glue is `Room::bot_next_action`. Invariants: schedule only after room-guard
   scopes (non-reentrant Mutex); bot applies use `apply_untouched` (no TTL
   feed); bots pause with no human connected; skill never serializes.
-- `telemetry.rs` — opt-in OTel metrics over OTLP/HTTP, gated + configured
-  ENTIRELY by standard `OTEL_*` env vars; a global no-op when unset. `init`
-  must run before any `metrics()` call (instrument binding); `shutdown()`
-  flushes after the persist flush.
+- `telemetry.rs` — opt-in OTel **metrics + logs** over OTLP/HTTP, gated +
+  configured ENTIRELY by standard `OTEL_*` env vars; a global no-op when unset.
+  `init` must run before any `metrics()` call (instrument binding); `shutdown()`
+  flushes both providers, after the persist flush. **`init_logs` must run before
+  the tracing subscriber is built** — the bridge is a subscriber *layer*, and a
+  subscriber can't be extended once installed (see `run_server`). Logs exist so a
+  browser error report carries its message + User-Agent, which a counter can't.
+  Still no traces.
 - `room.rs` — the heart: `Room` (players, turn, dice, history, per-room
   `broadcast::Sender`), join-code gen, `apply(actor_id, ClientMsg)`, and the
   `ServerMsg` / `ClientMsg` / `Snapshot` wire types. Unit-tested (turn advance,
   roll validation, reorder permutation guard, leave, bots).
 - `routes.rs` — router + REST (`POST /api/games`, `POST /api/games/{code}/join`,
-  `GET /api/games/{code}`, `GET /status`), CSP layer, path-traversal-safe SPA
-  fallback.
+  `GET /api/games/{code}`, `GET /status`, `POST /api/client-error`), CSP layer,
+  path-traversal-safe SPA fallback. Two SPA-serving invariants: a missing path
+  under `_app/` **404s** (serving the HTML shell there makes the browser refuse
+  the module and render a blank page), and `index.html` is `no-cache` while
+  `_app/immutable/*` is `immutable` (a cached shell naming deleted chunks is the
+  same blank page, plus a reload loop via the version poll).
 - `ws.rs` — `/ws/games/{code}?token=…`; `tokio::select!` loop. IMPORTANT: never
   hold the room `MutexGuard` across an `.await` (makes the future !Send) — read
   owned data under the lock, then await.

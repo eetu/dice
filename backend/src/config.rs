@@ -38,6 +38,10 @@ pub struct Config {
     /// Per-IP joins allowed per minute (also the burst). `DICE_RL_JOIN_PER_MIN`,
     /// default 60 — generous, since a venue full of phones can share one NAT IP.
     pub join_per_min: u32,
+    /// Per-IP browser error reports allowed per minute (`POST /api/client-error`).
+    /// `DICE_RL_CLIENT_ERR_PER_MIN`, default 6: the client already sends at most
+    /// one per kind per page load, so this only bounds a reload loop or abuse.
+    pub client_err_per_min: u32,
     /// Max concurrent WebSockets from a single IP. `DICE_WS_PER_IP`, default 24
     /// (again NAT-friendly: many players behind one router).
     pub ws_per_ip: u32,
@@ -96,6 +100,7 @@ impl Config {
             trust_proxy: env_bool("DICE_TRUST_PROXY", false),
             create_per_min: env_u32("DICE_RL_CREATE_PER_MIN", 10, 1),
             join_per_min: env_u32("DICE_RL_JOIN_PER_MIN", 60, 1),
+            client_err_per_min: env_u32("DICE_RL_CLIENT_ERR_PER_MIN", 6, 1),
             ws_per_ip: env_u32("DICE_WS_PER_IP", 24, 1),
             max_ws: env::var("DICE_MAX_WS")
                 .ok()

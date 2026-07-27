@@ -798,11 +798,5 @@ export function relabelRotationFor(
   return pick.clone();
 }
 
-// ---------- d100 ----------
-
-/** Expand a d100 roll value (1..100) into its two display dice: a tens d10
- *  (shown 00..90) and a units d10 (shown 0..9). 100 → "00" + "0". */
-export function d100Digits(value: number): { tens: number; units: number } {
-  const m = value % 100; // 100 → 0
-  return { tens: Math.floor(m / 10), units: m % 10 };
-}
+// d100 display splitting lives in `./d100` — the render path needs it without
+// pulling this module's three.js/cannon-es imports onto the game route.

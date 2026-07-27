@@ -45,6 +45,10 @@
   const opponents = $derived(
     (view?.players ?? []).filter((p) => p.playerId !== myId),
   );
+  // Alone at the table: the backend refuses bids and calls (you can't bluff
+  // yourself, and one seat trivially satisfies "last player standing"), so say
+  // we're waiting instead of showing controls that do nothing.
+  const needsOpponent = $derived((view?.players.length ?? 0) < 2);
   // The current player has dropped: the table can't progress, so offer a manual
   // skip (matches free mode — we wait by default, skip is the escape hatch).
   const currentOffline = $derived.by(() => {
@@ -202,7 +206,9 @@
         {:else}
           <!-- Standing bid pedestal — the round's progress at a glance. -->
           <div class="pedestal">
-            {#if view.bid}
+            {#if needsOpponent}
+              <span class="bid-open">{i18n.m.liarsNeedsOpponent}</span>
+            {:else if view.bid}
               <div class="bid-amount">
                 <span class="qty">{view.bid.quantity}</span>
                 <span class="times">×</span>
@@ -222,11 +228,13 @@
                 )}</span
               >
             {/if}
-            <span class="turnline" class:mine={isMyTurn}>
-              {isMyTurn
-                ? i18n.m.yourTurn
-                : i18n.m.waitingFor(nameOf(view.currentPlayerId))}
-            </span>
+            {#if !needsOpponent}
+              <span class="turnline" class:mine={isMyTurn}>
+                {isMyTurn
+                  ? i18n.m.yourTurn
+                  : i18n.m.waitingFor(nameOf(view.currentPlayerId))}
+              </span>
+            {/if}
             {#if currentOffline}
               <button class="skip" onclick={onSkip}>{i18n.m.skip}</button>
             {/if}
@@ -252,7 +260,7 @@
         {/if}
       </div>
 
-      {#if view.phase === "bidding" && view.yourDice.length && isMyTurn}
+      {#if view.phase === "bidding" && view.yourDice.length && isMyTurn && !needsOpponent}
         <div class="controls">
           <div class="row">
             <div class="qty-step">

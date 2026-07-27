@@ -519,6 +519,14 @@ impl LiarsState {
             && self.reveal.is_none()
             && self.dice.values().all(|d| d.len() as u8 == self.start_dice)
     }
+    /// Liar's Dice needs an opponent — bluffing against nobody isn't a game, and
+    /// the "last player standing" rule below is trivially true for one seat (so a
+    /// solo player calling their own bid used to end the match immediately and be
+    /// declared the winner). A solo host just waits; `on_player_joined` re-deals a
+    /// pristine match when someone arrives.
+    fn playable(&self) -> bool {
+        self.order.len() >= 2
+    }
 }
 
 /// Score a single Yatzy box for a set of dice (Nordic rules). Pure — the whole
@@ -1653,6 +1661,9 @@ impl Room {
             let Some(g) = self.liars.as_mut() else {
                 return;
             };
+            if !g.playable() {
+                return;
+            }
             if g.phase != LiarsPhase::Bidding {
                 return;
             }
@@ -1691,6 +1702,9 @@ impl Room {
             let Some(g) = self.liars.as_mut() else {
                 return;
             };
+            if !g.playable() {
+                return;
+            }
             if g.phase != LiarsPhase::Bidding {
                 return;
             }
@@ -1738,7 +1752,10 @@ impl Room {
             });
             g.bid = None;
             let active = g.active();
-            if active.len() <= 1 {
+            // Elimination only decides a winner in a match that had opponents to
+            // begin with (`playable` above already blocks the solo case; this
+            // keeps the rule itself honest).
+            if active.len() <= 1 && g.playable() {
                 g.winner = active.first().and_then(|&i| g.order.get(i).cloned());
                 g.phase = LiarsPhase::Over;
             } else {
@@ -3016,6 +3033,54 @@ mod tests {
         assert_eq!(v.phase, LiarsPhase::Over);
         assert_eq!(v.winner.as_deref(), Some(id[0].as_str()));
         assert_eq!(v.current_player_id, None);
+    }
+
+    /// A solo Liar's table can't be played, and above all can't END. One seat
+    /// trivially satisfies "last player standing", so bidding and then calling
+    /// your own bluff used to finish the match on the spot and crown you winner.
+    #[test]
+    fn liars_solo_table_cannot_be_played_or_won() {
+        let (mut room, id) = start_liars_room(1);
+        set_hand(&mut room, &id[0], vec![6, 6, 6, 6, 6]);
+
+        room.apply(
+            &id[0],
+            ClientMsg::Bid {
+                quantity: 1,
+                face: 6,
+            },
+        );
+        let v = room.liars_view(&id[0]).unwrap();
+        assert!(v.bid.is_none(), "a solo player must not be able to bid");
+
+        // …and calling with no bid, or at all, must not end the match.
+        room.apply(&id[0], ClientMsg::CallLiar);
+        let v = room.liars_view(&id[0]).unwrap();
+        assert_eq!(v.phase, LiarsPhase::Bidding);
+        assert_eq!(v.winner, None);
+        assert_eq!(v.your_dice.len(), 5, "no die may be docked");
+    }
+
+    /// The table becomes playable the moment an opponent arrives (a join re-deals
+    /// a pristine match), so the solo block above is a wait, not a dead end.
+    #[test]
+    fn liars_becomes_playable_when_an_opponent_joins() {
+        let (mut room, id) = start_liars_room(1);
+        room.add_player("Bob".into());
+        room.on_player_joined();
+
+        let bob = ids(&room)[1].clone();
+        set_hand(&mut room, &id[0], vec![6, 6, 6, 6, 6]);
+        set_hand(&mut room, &bob, vec![1, 1, 1, 1, 1]);
+        room.apply(
+            &id[0],
+            ClientMsg::Bid {
+                quantity: 3,
+                face: 6,
+            },
+        );
+        let v = room.liars_view(&id[0]).unwrap();
+        assert_eq!(v.bid.map(|b| b.quantity), Some(3));
     }
 
     #[test]

@@ -3,14 +3,13 @@
 // The context is created lazily inside a user gesture and resumed if suspended
 // (iOS/Safari autoplay policy).
 
+import { storage } from "$lib/storage";
+
 type WebkitWindow = Window & { webkitAudioContext?: typeof AudioContext };
 
 const MUTE_KEY = "dice:muted";
 function readMuted(): boolean {
-  return (
-    typeof localStorage !== "undefined" &&
-    localStorage.getItem(MUTE_KEY) === "1"
-  );
+  return storage.get(MUTE_KEY) === "1";
 }
 
 type Rattle = {
@@ -50,9 +49,7 @@ class DiceAudio {
 
   toggleMute(): void {
     this.muted = !this.muted;
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(MUTE_KEY, this.muted ? "1" : "0");
-    }
+    storage.set(MUTE_KEY, this.muted ? "1" : "0");
     if (this.muted) this.stopRattle();
     else this.#ensure();
   }

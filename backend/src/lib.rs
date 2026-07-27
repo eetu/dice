@@ -18,6 +18,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
 pub use config::Config;
@@ -33,12 +34,19 @@ pub struct AppState {
 
 pub async fn run_server() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,dice_backend=debug")),
-        )
-        .init();
+    // The OTLP logs bridge is a subscriber LAYER, and a subscriber can't be
+    // extended once installed — so the provider has to exist before this point.
+    // It only needs the standard OTEL_* env vars, which dotenv has just loaded.
+    let logs = telemetry::init_logs();
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,dice_backend=debug"));
+    let registry = tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer());
+    match logs.as_ref() {
+        Some(p) => registry.with(telemetry::logs_layer(p)).init(),
+        None => registry.init(),
+    }
 
     let cfg = Config::from_env()?;
     let guard = Arc::new(Guard::from_cfg(&cfg));
@@ -47,7 +55,7 @@ pub async fn run_server() -> anyhow::Result<()> {
     // Opt-in OTel metrics: installs the OTLP pipeline only when the standard
     // OTEL_EXPORTER_OTLP_ENDPOINT is set (all knobs are the standard OTEL_*
     // env vars), and MUST come before any instrument use (see telemetry.rs).
-    let telemetry = telemetry::init(&rooms);
+    let telemetry = telemetry::init(&rooms, logs);
 
     // Optional persistence: reload games flushed by the previous (graceful)
     // shutdown, then the file is consumed. Off unless DICE_STATE_FILE is set.

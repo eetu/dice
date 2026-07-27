@@ -1,6 +1,15 @@
 // Thin fetch layer + the wire types. Hand-mirrored from the Rust structs in
 // backend/src/room.rs and backend/src/routes.rs (no codegen). Keep in sync.
 
+/** Application WebSocket close codes (the 4000–4999 range is reserved for apps
+ *  and is the only part of a close frame a browser exposes). Mirrors the
+ *  constants in `backend/src/ws.rs` — part of the wire contract.
+ *
+ *  These two used to be one indistinguishable `Close(None)`, so a stale seat on
+ *  a perfectly live game was reported to the player as "the game expired". */
+export const CLOSE_NO_ROOM = 4404; // that code doesn't exist any more
+export const CLOSE_BAD_TOKEN = 4401; // the room is live; your saved seat isn't in it
+
 /** A participant. Mirrors `room::Player` (token is never sent). `bot` marks a
  *  server-side bot player; its SKILL is a server secret (never on the wire —
  *  whether a bot cheats must not be provable from traffic). */
@@ -232,12 +241,64 @@ export type StatusResponse = {
 /** Thrown for any non-2xx response; carries the HTTP status (404 = dead code). */
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** The backend's own explanation — `{ "error": … }` (see backend/src/error.rs)
+   *  or the raw text for the plain-text layer rejections (e.g. the body cap).
+   *  Shown to the user alongside the mapped message, so a report can name the
+   *  actual reason instead of "something went wrong". */
+  detail: string | null;
+  constructor(status: number, message: string, detail: string | null = null) {
     super(message);
     this.status = status;
+    this.detail = detail;
     this.name = "ApiError";
   }
 }
+
+/** Why a create/join/connect attempt failed, in terms the UI can explain. All
+ *  network failures look alike to `fetch`, so the transport cases are teased
+ *  apart as far as the browser allows. */
+export type FailReason =
+  | "notfound" // 404 — no such code
+  | "full" // 409 — the room is at max players
+  | "busy" // 503 — the server is at capacity
+  | "throttled" // 429 — rate limited
+  | "offline" // no network at all
+  | "timeout" // the request didn't answer in time
+  | "unreachable" // network is up, the server isn't answering
+  | "wsRefused" // HTTP works, but the game socket was refused
+  | "unknown";
+
+/** Classify a thrown error. Shared by the lobby, the game page and the socket so
+ *  one failure never reads three different ways. */
+export function failReason(e: unknown): FailReason {
+  if (e instanceof ApiError) {
+    switch (e.status) {
+      case 404:
+        return "notfound";
+      case 409:
+        return "full";
+      case 429:
+        return "throttled";
+      case 503:
+        return "busy";
+      default:
+        return "unknown";
+    }
+  }
+  // `AbortSignal.timeout` rejects with a DOMException named TimeoutError — an
+  // AbortController's generic AbortError couldn't be told from a real cancel.
+  if (e instanceof DOMException && e.name === "TimeoutError") return "timeout";
+  // Every fetch transport failure is an identical TypeError, by design (it must
+  // not leak whether a host exists). `onLine` is the only hint available.
+  if (e instanceof TypeError) {
+    return navigator.onLine ? "unreachable" : "offline";
+  }
+  return "unknown";
+}
+
+/** Long enough for a slow phone on a slow network, short enough that "Connecting…"
+ *  always resolves into an answer. Without it a hung request span forever. */
+const REQUEST_TIMEOUT_MS = 8000;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -246,11 +307,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.body ? { "content-type": "application/json" } : {}),
     },
     ...init,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
+    let detail: string | null = null;
+    try {
+      const text = (await res.text()).trim();
+      if (text) {
+        const parsed: unknown = text.startsWith("{")
+          ? JSON.parse(text)
+          : undefined;
+        const fromJson =
+          parsed && typeof parsed === "object" && "error" in parsed
+            ? String((parsed as { error: unknown }).error)
+            : undefined;
+        detail = (fromJson ?? text).slice(0, 200);
+      }
+    } catch {
+      /* an unreadable body is not worth failing over */
+    }
     throw new ApiError(
       res.status,
       `${init?.method ?? "GET"} ${path} → ${res.status}`,
+      detail,
     );
   }
   if (res.status === 204) {

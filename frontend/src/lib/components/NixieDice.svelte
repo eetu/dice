@@ -11,8 +11,11 @@
     diceSet: DieSpec[];
     color: string;
     onSettled?: () => void;
+    /** The tube scene couldn't be loaded (old browser, dead chunk) — the parent
+     *  shows the numeric dice instead of an empty stage. */
+    onFailed?: () => void;
   };
-  let { lastRoll, diceSet, color, onSettled }: Props = $props();
+  let { lastRoll, diceSet, color, onSettled, onFailed }: Props = $props();
 
   // One tube per digit of the kind's highest value (d20 → 2 tubes, d100 → 3);
   // a value shorter than its die's tube count leaves the leading tubes unlit.
@@ -35,20 +38,25 @@
 
   onMount(() => {
     let alive = true;
-    void import("$lib/dice/nixieScene").then((mod) => {
-      if (!alive || !container) return;
-      scene = mod.createNixieDiceScene(container, {
-        color,
-        glass: "#aab3c0", // clear, faintly cool glass (was near-black / smoked)
-        backdrop: "#08080c",
+    void import("$lib/dice/nixieScene")
+      .then((mod) => {
+        if (!alive || !container) return;
+        scene = mod.createNixieDiceScene(container, {
+          color,
+          glass: "#aab3c0", // clear, faintly cool glass (was near-black / smoked)
+          backdrop: "#08080c",
+        });
+        if (lastRoll && lastRoll.dice.length === diceSet.length) {
+          seen = lastRoll.id;
+          scene.setDigits(lastRoll.dice.map((d) => digitsFor(d.kind, d.value)));
+        } else {
+          scene.setDigits(dark());
+        }
+      })
+      .catch((e: unknown) => {
+        console.error("nixie scene load failed", e);
+        if (alive) onFailed?.();
       });
-      if (lastRoll && lastRoll.dice.length === diceSet.length) {
-        seen = lastRoll.id;
-        scene.setDigits(lastRoll.dice.map((d) => digitsFor(d.kind, d.value)));
-      } else {
-        scene.setDigits(dark());
-      }
-    });
     return () => {
       alive = false;
       if (timer) clearTimeout(timer);

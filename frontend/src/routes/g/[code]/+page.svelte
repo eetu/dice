@@ -12,6 +12,8 @@
     ApiError,
     type BotSkill,
     type DieSpec,
+    type FailReason,
+    failReason,
     type Mode,
     type YatzyCat,
   } from "$lib/api";
@@ -31,6 +33,7 @@
   import Wordmark from "$lib/components/Wordmark.svelte";
   import YatzyBoard from "$lib/components/YatzyBoard.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
+  import { report } from "$lib/report";
   import { diceAudio } from "$lib/stores/audio.svelte";
   import { farkle } from "$lib/stores/farkle.svelte";
   import { game } from "$lib/stores/game.svelte";
@@ -52,6 +55,10 @@
   let showShareModal = $state(false); // header code → share panel (all modes)
   let confirmLeave = $state(false); // leaving is destructive — confirm first
   let nameDraft = $state(""); // the name-prompt input (QR/link join, no stored name)
+  // Why the last attempt failed, and the server's own words for it — so the
+  // error card can say something true instead of "something went wrong".
+  let reason = $state<FailReason>("unknown");
+  let detail = $state("");
 
   const snap = $derived(game.snapshot);
   const players = $derived(snap?.players ?? []);
@@ -79,6 +86,31 @@
   // it instead of reconnecting forever.
   $effect(() => {
     if (socket.ended) phase = "ended";
+  });
+  // The socket gave up. Say which failure it was (the server is up but refusing
+  // sockets, vs not answering at all) instead of spinning "reconnecting…".
+  $effect(() => {
+    if (!socket.refused && !socket.unreachable) return;
+    reason = socket.refused ? "wsRefused" : "unreachable";
+    detail = "";
+    phase = "error";
+  });
+  // Our stored seat isn't in this (live) room — the code was recycled after the
+  // old game was freed. Rejoin as a new player once instead of showing the
+  // untrue "this game expired" screen. One shot, so a pathological server can't
+  // make us spin.
+  let rejoined = false;
+  let staleSeatNotice = $state(false);
+  $effect(() => {
+    if (!socket.staleSeat || rejoined) return;
+    rejoined = true;
+    session.clearCreds(code);
+    myId = null;
+    // Say why the seat changed — otherwise you'd just find yourself at the
+    // bottom of the player list with no explanation.
+    staleSeatNotice = true;
+    setTimeout(() => (staleSeatNotice = false), 5000);
+    void connect();
   });
   // Surface a dropped connection: while the board is up (`ready`) but the socket
   // isn't connected, the game can't progress. Debounce ~600ms so a quick
@@ -138,14 +170,25 @@
         creds = { playerId: c.playerId, token: c.token };
         session.saveCreds(code, creds);
       } catch (e) {
-        phase =
-          e instanceof ApiError && e.status === 404 ? "notfound" : "error";
+        reason = failReason(e);
+        // The exact server-side words, for the user to screenshot/relay.
+        detail =
+          e instanceof ApiError ? `${e.status} ${e.detail ?? ""}`.trim() : "";
+        phase = reason === "notfound" ? "notfound" : "error";
+        report("join", `${reason}: ${detail || "no detail"}`);
         return;
       }
     }
     myId = creds.playerId;
     socket.connect(code, creds.token);
     phase = "ready";
+  }
+
+  /** Retry after a failure — also clears the socket's "gave up" state, which
+   *  `connect()` alone wouldn't when we still hold valid creds. */
+  function retryConnect() {
+    socket.retry();
+    void connect();
   }
 
   function roll() {
@@ -270,6 +313,10 @@
     <Toast message={i18n.m.connectionLost} variant="warn" busy />
   {/if}
 
+  {#if staleSeatNotice}
+    <Toast message={i18n.m.staleSeat} variant="info" />
+  {/if}
+
   {#if phase === "notfound"}
     <div class="notice halo-card">
       <h2>{i18n.m.notFoundTitle}</h2>
@@ -284,9 +331,13 @@
     </div>
   {:else if phase === "error"}
     <div class="notice halo-card">
-      <h2>{i18n.m.errorTitle}</h2>
-      <p>{i18n.m.errorBody}</p>
-      <button class="btn" onclick={connect}>{i18n.m.retry}</button>
+      <h2>{i18n.m.joinFail[reason].title}</h2>
+      <p>{i18n.m.joinFail[reason].body}</p>
+      {#if detail}
+        <!-- The server's own words, selectable so they can be relayed. -->
+        <code class="diag">{detail}</code>
+      {/if}
+      <button class="btn" onclick={retryConnect}>{i18n.m.retry}</button>
     </div>
   {:else if phase === "name"}
     <div class="notice halo-card">
@@ -797,6 +848,15 @@
     max-width: 26rem;
     margin: 3rem auto;
     color: var(--halo-text-main);
+  }
+  /* The server's own error text — selectable so a player can relay it. */
+  .diag {
+    display: block;
+    margin: 0.9rem 0 0;
+    font-size: 0.75rem;
+    color: var(--halo-text-muted);
+    overflow-wrap: anywhere;
+    user-select: all;
   }
   .btn {
     display: inline-block;

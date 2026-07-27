@@ -49,6 +49,7 @@ Requires Rust, Node (see `frontend/.node-version`), `just`, and `bacon`.
 | `DICE_TRUST_PROXY`     | `false`        | Trust `X-Forwarded-For`/`X-Real-IP` for per-IP limits — see below |
 | `DICE_RL_CREATE_PER_MIN` | `10`         | Per-IP room creations / minute (also the burst)             |
 | `DICE_RL_JOIN_PER_MIN` | `60`           | Per-IP joins / minute (also the burst)                      |
+| `DICE_RL_CLIENT_ERR_PER_MIN` | `6`      | Per-IP browser error reports / minute (`POST /api/client-error`) |
 | `DICE_WS_PER_IP`       | `24`           | Max concurrent WebSockets per IP                            |
 | `DICE_MAX_WS`          | `20000`        | Global cap on concurrent WebSockets                        |
 | `DICE_WS_MSGS_PER_SEC` | `20`           | Per-connection inbound message budget / sec (burst 2×)      |
@@ -58,13 +59,24 @@ Requires Rust, Node (see `frontend/.node-version`), `just`, and `bacon`.
 ### Telemetry (optional, standard OTel)
 
 The backend exports OpenTelemetry **metrics** (games created, joins, rolls per
-mode, bots added, live rooms/sockets, reaps) over OTLP/HTTP when — and only
-when — the standard `OTEL_EXPORTER_OTLP_ENDPOINT` (or
-`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`) is set. All knobs are the standard
+mode, bots added, live rooms/sockets, reaps, client errors by kind) and **logs**
+(`warn!`/`error!` lines) over OTLP/HTTP when — and only when — the standard
+`OTEL_EXPORTER_OTLP_ENDPOINT` (or a signal-specific
+`OTEL_EXPORTER_OTLP_{METRICS,LOGS}_ENDPOINT`) is set. All knobs are the standard
 `OTEL_*` env vars (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_HEADERS`,
 `OTEL_METRIC_EXPORT_INTERVAL`, …); there are no app-specific telemetry
 settings. Unset → telemetry is a complete no-op (no exporter thread, no
-sockets). No traces or logs are exported.
+sockets). No traces are exported.
+
+Log export is what makes browser-side failures diagnosable: when the SPA can't
+start (a browser too old for the bundle, blocked site data, a dead chunk) it
+posts a small report to `POST /api/client-error`, which becomes a
+`dice.client.errors{kind}` counter plus a log record carrying the sanitized
+message, URL and User-Agent. Without it, a blank page on someone else's phone is
+unfalsifiable. The endpoint is un-authed like the rest of the app, so it's per-IP
+rate limited (`DICE_RL_CLIENT_ERR_PER_MIN`), capped at a 1 KiB body, restricted
+to a closed set of `kind` values, and every text field is truncated and stripped
+of control characters before it's logged.
 
 ### Surviving a restart (optional)
 

@@ -20,7 +20,8 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
 - **No auth, public app.** There is NO oauth2-proxy gating and NO forward-auth
   extractor — anyone with the code joins. Deploy un-gated (see raspi wiring).
 - **Self-defending public endpoint.** Since it's un-authed, the backend caps
-  abuse itself (`backend/src/guard.rs`): per-IP token buckets on create/join
+  abuse itself (`backend/src/guard.rs`): per-IP token buckets on
+  create/join/client-error
   (429), per-IP + global concurrent-WS caps (429), a per-connection message
   budget (drops broadcast-amplification floods, closes sustained ones), and a
   16 KiB body cap (413) — on top of the room/player/dice/history/TTL memory
@@ -54,7 +55,11 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   past someone genuinely gone. The client also holds a screen wake lock while the
   game is foregrounded so a slow round doesn't sleep the device (and drop them).
 - **Built-in games** (`mode`, room-wide): `free` (the plain turn-based roller),
-  `liars` (Liar's Dice — hidden per-player dice, personalized `liars` view),
+  `liars` (Liar's Dice — hidden per-player dice, personalized `liars` view;
+  **needs ≥2 seats**: `LiarsState::playable` gates `bid`/`callLiar` and the
+  last-player-standing win, because one seat satisfies elimination trivially — a
+  solo player calling their own bluff used to end the match and win it. Yatzy and
+  Farkle are fine solo),
   `yatzy` (Nordic Yatzy — public dice, up to 3 rolls/turn with holds, 15-box
   scorecard, scoring in `room::yatzy_score_cat`), `farkle` (push-your-luck — set
   aside scoring dice or bust, scoring in `room::farkle_score_exact`; first to
@@ -84,10 +89,41 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   `liarsChanged` ping and each socket rebuilds its own `liars` view; Yatzy + Farkle
   are public so their views broadcast verbatim. All fields camelCase; TS mirror in
   `frontend/src/lib/api.ts` — keep the two in sync by hand (no codegen).
-- **Telemetry is standard OTel, metrics-only, opt-in** (`backend/src/telemetry.rs`):
+- **Telemetry is standard OTel, metrics + logs, opt-in** (`backend/src/telemetry.rs`):
   active only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (all knobs = standard
   `OTEL_*` vars, nothing DICE-prefixed); unset → a complete no-op. Counters for
-  games/joins/rolls/bots/reaps + live rooms/sockets gauges. No traces/logs.
+  games/joins/rolls/bots/reaps/client-errors + live rooms/sockets gauges, and
+  `warn!`/`error!` lines exported as OTLP log records. **No traces.**
+- **The frontend reports its own failures** — everything funnels through
+  `frontend/src/lib/report.ts` → `POST /api/client-error` (our backend, never the
+  collector directly: the browser holds no ingest credential and the backend
+  sanitizes first) → `dice.client.errors{kind}` + an OTLP log record. A blank page
+  can't describe itself, so the app says what broke instead of leaving "it didn't
+  work on my phone" as the only evidence. **No single mechanism catches
+  everything** — four layers, because each is blind to the others' failures:
+
+  | Layer | Catches | Kinds |
+  |---|---|---|
+  | inline watchdog in `app.html` (classic ES5, pre-boot) | bundle won't parse, no ESM, dead chunk, module-eval throw, never-rendered; plus ALL window `error`/`unhandledrejection` (event handlers, async) | `boot` `noEsm` `chunk` `runtime` |
+  | `<svelte:boundary>` in `+layout.svelte` | throws during render or inside an `$effect` — invisible to `handleError`; shows `ErrorCard` with a working reset | `render` |
+  | `hooks.client.ts` `handleError` | route load / navigation errors (SvelteKit's default would discard the message) | `route` |
+  | explicit call sites | join/create refused, socket given up on | `join` `ws` |
+
+  A boundary deliberately does NOT catch event-handler or async errors (Svelte
+  doesn't route them through boundaries) — that's why the window-level handlers
+  stay. `kind` is a CLOSED enum mirrored in `backend/src/routes.rs` (it's a metric
+  attribute, so cardinality must be bounded); message/url/UA are sanitized +
+  truncated server-side; the endpoint is per-IP rate limited
+  (`DICE_RL_CLIENT_ERR_PER_MIN`) with a 1 KiB body cap, since it's an un-authed
+  write. At most one report per kind per page load, so a reload loop can't flood.
+- **Nothing the game doesn't need may crash it.** The 3D engine (three.js +
+  cannon-es) is dynamic-imported and falls back to numeric dice on a parse
+  failure, a missing chunk, no WebGL, or a lost GPU context; `frontend/src/lib/storage.ts`
+  wraps ALL persistence because reading `localStorage` *throws* where site data
+  is blocked (`typeof` is not a guard) and every store reads at module-eval time
+  in the root layout's graph — one throw there used to render an empty `<body>`.
+  `vite.config.ts` pins `build.target` so a dependency can't silently raise the
+  browser floor (Vite's default excluded Samsung Internet and older WebViews).
 - **Dice theme is room-wide** (`setDiceTheme`, in the snapshot); UI light/dark is
   a personal `data-theme` preference. `nixie` theme renders glowbox tubes instead
   of the 3D mesh.
@@ -102,7 +138,8 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   (unset → ephemeral; a path → persist games across a graceful restart). Caps bound memory
   on the public endpoint (`/api/games` → 503 when full, join → 409). Abuse
   guards: `DICE_TRUST_PROXY` (false), `DICE_RL_CREATE_PER_MIN` (10),
-  `DICE_RL_JOIN_PER_MIN` (60), `DICE_WS_PER_IP` (24), `DICE_MAX_WS` (20000),
+  `DICE_RL_JOIN_PER_MIN` (60), `DICE_RL_CLIENT_ERR_PER_MIN` (6),
+  `DICE_WS_PER_IP` (24), `DICE_MAX_WS` (20000),
   `DICE_WS_MSGS_PER_SEC` (20). Full env table + the trust-proxy rule in
   `README.md`; rationale in `SECURITY.md`.
 - `just check` = clippy + rustfmt + `yarn validate`. `just test` = cargo + vitest.

@@ -4,14 +4,15 @@
 // route). The resolved light|dark is written to data-theme on <html> by the root
 // layout, which the halo tokens key off.
 
+import { storage } from "$lib/storage";
+
 export type ThemeMode = "auto" | "light" | "dark";
 export type Resolved = "light" | "dark";
 
 const KEY = "dice:theme";
 
 function initialMode(): ThemeMode {
-  if (typeof localStorage === "undefined") return "auto";
-  const v = localStorage.getItem(KEY);
+  const v = storage.get(KEY);
   return v === "light" || v === "dark" || v === "auto" ? v : "auto";
 }
 
@@ -35,7 +36,7 @@ export const theme = $state<{ mode: ThemeMode; resolved: Resolved }>({
 export function setTheme(mode: ThemeMode): void {
   theme.mode = mode;
   theme.resolved = resolve(mode);
-  if (typeof localStorage !== "undefined") localStorage.setItem(KEY, mode);
+  storage.set(KEY, mode);
 }
 
 // Cycle for the single toolbar button: auto → light → dark → auto.

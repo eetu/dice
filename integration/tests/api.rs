@@ -62,6 +62,26 @@ async fn join_unknown_code_404() {
     assert_eq!(r.status(), reqwest::StatusCode::NOT_FOUND);
 }
 
+/// A full room answers 409 AND says why in the body. The client renders that
+/// `error` text next to its own message, so this is a wire contract, not just a
+/// status code — a bare 409 used to surface as "something went wrong".
+#[tokio::test]
+#[ignore = "spawns the backend binary"]
+async fn join_full_room_409s_with_a_reason() {
+    let s = Stack::start_with(&[("DICE_MAX_PLAYERS", "1")])
+        .await
+        .unwrap();
+    let alice = s.create("Alice").await;
+    let code = alice["code"].as_str().unwrap();
+
+    let r = s
+        .post_json(&format!("/api/games/{code}/join"), json!({ "name": "Bob" }))
+        .await;
+    assert_eq!(r.status(), reqwest::StatusCode::CONFLICT);
+    let body: Value = r.json().await.unwrap();
+    assert_eq!(body["error"], "game is full");
+}
+
 #[tokio::test]
 #[ignore = "spawns the backend binary"]
 async fn ws_roll_roundtrip() {

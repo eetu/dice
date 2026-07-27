@@ -2,9 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- No `maximum-scale`: Android honours it (iOS ignores it), so all it ever
+      did was take pinch-zoom away from Android users. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png" />
@@ -32,5 +34,120 @@
   </head>
   <body data-sveltekit-preload-data="hover">
     <div style="display: contents">%sveltekit.body%</div>
+
+    <!-- Boot watchdog. The SPA is a single module graph, so a syntax error (a
+      browser too old for the bundle), a throw during module eval (e.g. a
+      localStorage getter raising SecurityError), a stale/dead chunk URL, or no
+      ES-module support at all leaves an EMPTY page: no Svelte, no +error.svelte,
+      and nothing the user can describe beyond "it didn't work". This is the only
+      code still running in those cases, so it says something on screen AND
+      reports itself to the backend.
+
+      Deliberately ES5, inline-styled, classic (non-module) and outside the
+      build: it has to work when both the JS and the CSS bundle are broken. It's
+      neither linted nor typechecked — keep it small and dumb. -->
+    <div id="boot-fail" hidden></div>
+    <script>
+      (function () {
+        var el = document.getElementById("boot-fail");
+        var fi = (navigator.language || "").toLowerCase().indexOf("fi") === 0;
+        var sent = {};
+
+        function beacon(kind, msg) {
+          if (sent[kind]) return; // one report per kind per page load
+          sent[kind] = 1;
+          try {
+            var body = JSON.stringify({
+              kind: kind,
+              message: String(msg).slice(0, 300),
+              url: location.href,
+            });
+            if (navigator.sendBeacon) {
+              navigator.sendBeacon(
+                "/api/client-error",
+                new Blob([body], { type: "application/json" }),
+              );
+            }
+          } catch (e) {
+            /* nothing left to try */
+          }
+        }
+
+        // `kind` describes a failure to START. Once the app has rendered, the same
+        // window-level error means something broke while RUNNING — a different
+        // thing to chase in the telemetry, so it's reported under its own kind.
+        function show(kind, what) {
+          beacon(window.__diceBooted ? "runtime" : kind, what);
+          // Don't shout over an app that booted, and keep the FIRST failure (the
+          // useful one) if several arrive.
+          if (!el || window.__diceBooted || !el.hidden) return;
+          el.hidden = false;
+          el.setAttribute(
+            "style",
+            "margin:2rem auto;max-width:34rem;padding:1.5rem;border-radius:6px;" +
+              "font:14px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;" +
+              "white-space:pre-wrap;user-select:all;-webkit-user-select:all;" +
+              "background:#1a1a1a;color:#e8e8e8",
+          );
+          // textContent, never innerHTML — `location.href` below is attacker-controllable.
+          el.textContent =
+            (fi ? "dice ei käynnistynyt." : "dice couldn't start.") +
+            "\n\n" +
+            (fi
+              ? "Kokeile toista selainta tai päivitä nykyinen. Voit myös lähettää tämän tekstin linkin jakajalle."
+              : "Try a different browser, or update this one. You can also send this text to whoever shared the link.") +
+            "\n\n" +
+            what +
+            "\nbuild: %sveltekit.env.PUBLIC_APP_VERSION%" +
+            "\nbrowser: " +
+            navigator.userAgent +
+            "\npage: " +
+            location.href;
+        }
+
+        // Capture phase is required to see resource-load failures, but it also
+        // surfaces benign font/icon 404s — only a dead SCRIPT or a real runtime
+        // error means the app can't start.
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e.target;
+            if (t && t !== window && t.nodeName !== "SCRIPT") return;
+            var src = (t && t.src) || e.filename || "";
+            show(
+              t && t.nodeName === "SCRIPT" ? "chunk" : "boot",
+              (e.message || "failed to load") + (src ? "\nat: " + src : ""),
+            );
+          },
+          true,
+        );
+
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e.reason;
+          show("boot", "unhandled rejection: " + ((r && r.message) || r));
+        });
+
+        // A browser without ES modules skips the bundle silently — no error event
+        // ever fires, so this check is the only way to detect it.
+        try {
+          if (!("noModule" in HTMLScriptElement.prototype)) {
+            show("noEsm", "this browser doesn't support ES modules");
+          }
+        } catch (e) {
+          show("noEsm", "this browser is too old to run the app");
+        }
+
+        // Nothing rendered in time. Generous, because a slow phone on a slow
+        // network isn't a failure — and the app clears this if it arrives late.
+        setTimeout(function () {
+          show("boot", "timed out waiting for the app to start");
+        }, 12000);
+
+        // Called by the root layout once it has actually rendered.
+        window.__diceHideBootFail = function () {
+          if (el && !el.hidden) el.hidden = true;
+        };
+      })();
+    </script>
   </body>
 </html>

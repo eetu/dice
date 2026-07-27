@@ -8,4 +8,9 @@ export default [
   { ignores: ["dist/", "build/", ".svelte-kit/", "src/lib/vendor/"] },
   // Build-time constant injected by Vite `define` (see vite.config.ts).
   { languageOptions: { globals: { __APP_VERSION__: "readonly" } } },
+  // Build scripts run in node, not the browser.
+  {
+    files: ["scripts/**"],
+    languageOptions: { globals: { process: "readonly", console: "readonly" } },
+  },
 ];

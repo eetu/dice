@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 
+import { d100Digits } from "../d100";
 import {
-  d100Digits,
   type DieType,
   relabelRotationFor,
   shapeFor,

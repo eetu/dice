@@ -164,6 +164,10 @@ struct WsTrack {
 pub struct Guard {
     pub create: RateMap,
     pub join: RateMap,
+    /// Browser error reports (`POST /api/client-error`). Its own bucket, tight by
+    /// default: it's an un-authed write on a public endpoint, and a reload loop on
+    /// one broken device shouldn't be able to flood the telemetry pipeline.
+    pub client_error: RateMap,
     ws_per_ip: u32,
     max_ws: usize,
     ws_msgs_per_sec: u32,
@@ -175,6 +179,7 @@ impl Guard {
         Guard {
             create: RateMap::per_minute(cfg.create_per_min),
             join: RateMap::per_minute(cfg.join_per_min),
+            client_error: RateMap::per_minute(cfg.client_err_per_min),
             ws_per_ip: cfg.ws_per_ip,
             max_ws: cfg.max_ws,
             ws_msgs_per_sec: cfg.ws_msgs_per_sec,
@@ -214,6 +219,7 @@ impl Guard {
         let now = Instant::now();
         self.create.sweep_at(now);
         self.join.sweep_at(now);
+        self.client_error.sweep_at(now);
     }
 }
 

@@ -428,6 +428,11 @@ export type HoverInfo = { value: string; x: number; y: number };
 export type DiceSceneOptions = {
   onImpact?: (strength: number, material: string, theme: string) => void;
   onSettled?: (values: number[]) => void;
+  /** The GPU dropped our context and every uploaded resource with it (Android
+   *  reclaims GPU processes under memory pressure, or on backgrounding). We
+   *  don't attempt a rebuild — the caller downgrades to the numeric dice, which
+   *  is a live game instead of a permanently black canvas. */
+  onLost?: () => void;
 };
 
 export class DiceScene {
@@ -458,6 +463,7 @@ export class DiceScene {
 
   #phase: "idle" | "eject" | "playing" = "idle";
   #raf = 0;
+  #lost = false; // WebGL context gone — stop rendering, never reschedule
   // Pre-roll snap-out: elapsed time + each die's captured start transform.
   #ejectElapsed = 0;
   #ejectStart: {
@@ -505,6 +511,7 @@ export class DiceScene {
       // A dice tray doesn't need the discrete GPU on dual-GPU laptops.
       powerPreference: "low-power",
     });
+    canvas.addEventListener("webglcontextlost", this.#onContextLost);
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     // The elemental glass themes trigger three's transmission pass (an extra
     // scene render) — a reduced-resolution buffer keeps it affordable, but too
@@ -1361,6 +1368,7 @@ export class DiceScene {
   }
 
   #tick = (now: number) => {
+    if (this.#lost) return;
     const dt = this.#last ? Math.min((now - this.#last) / 1000, 1 / 30) : STEP;
     this.#last = now;
     this.#surfTime += dt;
@@ -1463,8 +1471,17 @@ export class DiceScene {
     this.#requestStatic(); // restart the loop; churn resumes if cores are live
   };
 
+  // Not prevented-default on purpose: honouring the loss (rather than asking for
+  // a restore we can't repopulate) lets the caller fall back cleanly.
+  #onContextLost = () => {
+    this.#lost = true;
+    if (this.#raf) cancelAnimationFrame(this.#raf);
+    this.#raf = 0;
+    this.#opts.onLost?.();
+  };
+
   #start() {
-    if (this.#raf) return;
+    if (this.#lost || this.#raf) return;
     this.#last = 0;
     this.#raf = requestAnimationFrame(this.#tick);
   }
@@ -1582,6 +1599,10 @@ export class DiceScene {
 
   dispose() {
     window.removeEventListener("focus", this.#onFocus);
+    this.#renderer.domElement.removeEventListener(
+      "webglcontextlost",
+      this.#onContextLost,
+    );
     if (this.#raf) cancelAnimationFrame(this.#raf);
     this.#ro.disconnect();
     for (const d of [...this.#dice]) this.#removeDie(d);

@@ -17,7 +17,16 @@ for the game invariants. `yarn validate` (lint + format + typecheck) must be cle
   `SharePanel` (QR + copy), `DiceThemeSelect`, toggles, `Wordmark`.
 - `lib/dice/` — `DiceScene.ts` (3D physics dice engine), `orient.ts` (relabel
   math, unit-tested), `nixieScene.ts` (3D nixie-tube scene), `themes.ts`.
-- `lib/api.ts` — fetch wrapper + the TS mirror of the Rust wire types.
+- `lib/api.ts` — fetch wrapper + the TS mirror of the Rust wire types, plus
+  `failReason` (the shared failure classifier) and the WS close codes.
+- `lib/storage.ts` — the ONLY place that touches `localStorage`. Reading it throws
+  where site data is blocked, and every store reads at module-eval time in the
+  root layout's graph, so a direct access there takes the whole app down.
+- `lib/report.ts` — client error reporting (see the root CLAUDE.md table for which
+  layer catches what). `+error.svelte`, the `<svelte:boundary>` in `+layout.svelte`
+  and the inline watchdog in `app.html` are the three user-visible surfaces; they
+  share `components/ErrorCard.svelte` (except the watchdog, which can't — it must
+  survive the bundle and CSS being broken, so it's hand-rolled ES5).
 
 ## Notes
 

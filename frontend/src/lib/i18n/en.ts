@@ -2,6 +2,8 @@
 // typed as `Catalog`, so a missing/renamed key fails the build. String values are
 // plain; anything with interpolation or agreement is a function.
 
+import type { FailReason } from "$lib/api";
+
 export const en = {
   // Lobby
   tagline: "Roll dice together, in turns.",
@@ -18,9 +20,11 @@ export const en = {
   scanDenied: "Camera access denied — allow it in settings",
   scanNoCam: "No camera available",
   joinPromptTitle: "Pick a name to join",
-  errCreate: "Couldn't create a game — is the server running?",
+  // Everything else that can go wrong reaching the server lives in `joinFail`
+  // below, keyed by the classified reason.
   errNoGame: (code: string) => `No game "${code}" — it may have expired.`,
-  errJoin: "Couldn't join — try again.",
+  storageBlocked:
+    "Your browser is blocking site data, so your name and seat won't be remembered after a reload. Games still work.",
 
   // Header + notices
   settings: "Settings",
@@ -44,8 +48,52 @@ export const en = {
   endedTitle: "Game ended",
   endedBody: (code: string) =>
     `The game ${code} is no longer available — it expired or the server restarted (games aren't saved). Start a fresh one.`,
-  errorTitle: "Couldn't connect",
-  errorBody: "Something went wrong reaching the server.",
+  // One entry per FailReason (api.ts). `satisfies` keeps the literal type — so
+  // fi.ts is forced to mirror every key, and a new reason breaks the build here
+  // instead of silently rendering the generic "something went wrong".
+  joinFail: {
+    notfound: {
+      title: "Game not found",
+      body: "That code doesn't exist or has expired.",
+    },
+    full: {
+      title: "This game is full",
+      body: "It already has the maximum number of players. Ask someone to leave, or start a new game.",
+    },
+    busy: {
+      title: "The server is full",
+      body: "It's at capacity right now. Try again in a minute.",
+    },
+    throttled: {
+      title: "Too many attempts",
+      body: "Too many tries in a row from your network. Wait a minute, then retry.",
+    },
+    offline: {
+      title: "You're offline",
+      body: "Your device has no network connection. Check it and retry.",
+    },
+    timeout: {
+      title: "The server didn't answer",
+      body: "It took too long to respond. It may be restarting.",
+    },
+    unreachable: {
+      title: "Can't reach the server",
+      body: "Your network is up, but the server isn't answering. It may be down or restarting.",
+    },
+    wsRefused: {
+      title: "The server is busy",
+      body: "It's up, but refusing new live connections right now. Try again shortly.",
+    },
+    unknown: {
+      title: "Couldn't connect",
+      body: "Something went wrong reaching the server.",
+    },
+  } satisfies Record<FailReason, { title: string; body: string }>,
+  staleSeat: "Your old seat in this game is gone — rejoined as a new player.",
+  crashTitle: "Something broke",
+  crashBody:
+    "The app hit an error it couldn't recover from. Trying again usually fixes it — if it doesn't, send the details below to whoever shared the link.",
+  reload: "Reload",
 
   // Dice stage
   yourTurn: "Your turn",
@@ -133,6 +181,7 @@ export const en = {
   bids: (name: string, isYou: boolean) => (isYou ? "You bid" : `${name} bids`),
   nextRound: "Next round",
   spectating: "You're out — spectating",
+  liarsNeedsOpponent: "Waiting for another player — you can't bluff yourself",
   bidLabel: (q: number) => `Bid ${q} ×`,
   liar: "Liar!",
   you: "You",

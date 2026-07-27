@@ -7,6 +7,8 @@
 // shaking stops the dice are released and fall — a roll fires. A quick jolt is
 // ignored: the shake must be sustained past MIN_SHAKE_MS before a release counts.
 
+import { storage } from "$lib/storage";
+
 type PermissionRequestable = {
   requestPermission?: () => Promise<"granted" | "denied" | "default">;
 };
@@ -17,15 +19,10 @@ const MIN_SHAKE_MS = 250; // must shake at least this long for the release to ro
 
 const PREF_KEY = "dice:shake";
 function wantsShake(): boolean {
-  return (
-    typeof localStorage !== "undefined" &&
-    localStorage.getItem(PREF_KEY) === "1"
-  );
+  return storage.get(PREF_KEY) === "1";
 }
 function savePref(on: boolean): void {
-  if (typeof localStorage !== "undefined") {
-    localStorage.setItem(PREF_KEY, on ? "1" : "0");
-  }
+  storage.set(PREF_KEY, on ? "1" : "0");
 }
 
 class Shake {

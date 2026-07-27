@@ -44,6 +44,10 @@ check:
     cargo clippy --workspace --all-targets -- -D warnings
     cargo fmt --all -- --check
     cd frontend && {{yarn}} validate
+    # Build + assert the bundle stays inside the declared browser floor: a
+    # dependency needing newer syntax than build.target used to sail through and
+    # break older Android browsers on the game route only.
+    cd frontend && {{yarn}} build && {{yarn}} check:bundle
 
 # Run all tests (rust unit/integration + frontend).
 test:

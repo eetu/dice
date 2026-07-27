@@ -2,12 +2,11 @@
   import { onMount } from "svelte";
 
   import type { DieSpec, RollDie, RollRecord } from "$lib/api";
-  import {
-    DiceScene,
-    type HoverInfo,
-    type RenderDie,
-  } from "$lib/dice/DiceScene";
-  import { d100Digits, type DieType } from "$lib/dice/shapes";
+  import { d100Digits } from "$lib/dice/d100";
+  // Type-only: a bare `import type` is always erased, so three.js never reaches
+  // this route's chunk. See `loadScene` below for the runtime import.
+  import type { DiceScene, HoverInfo, RenderDie } from "$lib/dice/DiceScene";
+  import type { DieType } from "$lib/dice/shapes";
   import { themeByName } from "$lib/dice/themes";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { diceAudio } from "$lib/stores/audio.svelte";
@@ -79,9 +78,29 @@
   const automated =
     typeof navigator !== "undefined" && navigator.webdriver === true;
   let failed = $state(automated);
+  let nixieFailed = $state(false); // tube scene unavailable → numeric dice
   let seenRollId = -1;
   let lastTrigger = 0;
   let hover = $state<HoverInfo | null>(null);
+
+  // The 3D engine (three.js + cannon-es, ~800 KB) is an ENHANCEMENT, not the
+  // game: it's fetched on demand so this route boots — and stays playable via
+  // the numeric fallback — on a browser that can't parse it, a device that can't
+  // afford it, or a stale/broken chunk. Static-importing it meant an invite link
+  // died outright on an old Chromium while the lobby still worked.
+  let sceneMod = $state.raw<typeof import("$lib/dice/DiceScene") | null>(null);
+  let loading = false;
+
+  function loadScene() {
+    if (loading) return;
+    loading = true;
+    void import("$lib/dice/DiceScene")
+      .then((mod) => (sceneMod = mod))
+      .catch((e: unknown) => {
+        console.error("dice scene load failed", e);
+        failed = true;
+      });
+  }
 
   // Create / destroy the 3D scene as the render branch toggles (only the all-d6
   // cube tray uses it for now).
@@ -91,14 +110,27 @@
       scene = null;
       return;
     }
-    if (canvas && !scene && !failed) {
+    if (failed) return;
+    const mod = sceneMod;
+    if (!mod) {
+      loadScene(); // first frame that actually wants 3D — fetch it now
+      return;
+    }
+    if (canvas && !scene) {
       try {
-        scene = new DiceScene(canvas, {
+        scene = new mod.DiceScene(canvas, {
           onImpact: (s, material, t) =>
             material === "water"
               ? diceAudio.splash(s)
               : diceAudio.clack(s, material, t),
           onSettled: () => onSettled?.(),
+          // GPU context gone: drop to the numeric dice rather than leave a dead
+          // black canvas on the table.
+          onLost: () => {
+            scene?.dispose();
+            scene = null;
+            failed = true;
+          },
         });
         scene.setDeck(deck);
         seenRollId = lastRoll?.id ?? -1;
@@ -234,8 +266,14 @@
     class:shaking={shake.shaking}
     style="--shake:{shake.intensity}"
   >
-    {#if allNixie}
-      <NixieDice {lastRoll} {diceSet} color={nixieColor} {onSettled} />
+    {#if allNixie && !nixieFailed}
+      <NixieDice
+        {lastRoll}
+        {diceSet}
+        color={nixieColor}
+        {onSettled}
+        onFailed={() => (nixieFailed = true)}
+      />
     {:else if use3D && !failed}
       <canvas bind:this={canvas}></canvas>
     {:else}

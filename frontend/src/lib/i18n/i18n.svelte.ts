@@ -2,6 +2,8 @@
 // Default = the browser language (Finnish device → fi, else en), overridable and
 // persisted. No dependency; catalogs are typed so a missing key fails the build.
 
+import { storage } from "$lib/storage";
+
 import { type Catalog, en } from "./en";
 import { fi } from "./fi";
 
@@ -9,10 +11,8 @@ const CATALOGS: Record<string, Catalog> = { en, fi };
 const KEY = "dice:lang";
 
 function initialLang(): string {
-  if (typeof localStorage !== "undefined") {
-    const saved = localStorage.getItem(KEY);
-    if (saved && saved in CATALOGS) return saved;
-  }
+  const saved = storage.get(KEY);
+  if (saved && saved in CATALOGS) return saved;
   if (
     typeof navigator !== "undefined" &&
     navigator.language?.toLowerCase().startsWith("fi")
@@ -36,9 +36,7 @@ class I18n {
 
   set(lang: string): void {
     this.lang = lang in CATALOGS ? lang : "en";
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(KEY, this.lang);
-    }
+    storage.set(KEY, this.lang);
   }
 }
 

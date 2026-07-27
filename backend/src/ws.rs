@@ -5,7 +5,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -19,6 +19,24 @@ use crate::AppState;
 #[derive(Deserialize)]
 pub struct WsAuth {
     pub token: String,
+}
+
+/// Application close codes. 4000–4999 is the range reserved for applications and
+/// the only part of a close frame a browser exposes to JS, so the client BRANCHES
+/// on these (mirrored in `frontend/src/lib/api.ts`).
+///
+/// Both cases used to send a bare `Close(None)`, which the client could only
+/// lump together as "this game is gone" — a lie for a live room whose code was
+/// recycled, and a dead end for the player instead of a rejoin.
+const CLOSE_NO_ROOM: u16 = 4404;
+const CLOSE_BAD_TOKEN: u16 = 4401;
+
+async fn close_with(socket: &mut WebSocket, code: u16, reason: &'static str) {
+    let frame = CloseFrame {
+        code,
+        reason: reason.into(),
+    };
+    let _ = socket.send(Message::Close(Some(frame))).await;
 }
 
 pub async fn ws_handler(
@@ -56,7 +74,7 @@ async fn handle_socket(
     // `.await` in the else branch (a !Send future otherwise).
     let room = st.rooms.lock().unwrap().get(&code).cloned();
     let Some(room) = room else {
-        let _ = socket.send(Message::Close(None)).await;
+        close_with(&mut socket, CLOSE_NO_ROOM, "no such game").await;
         return;
     };
 
@@ -79,7 +97,7 @@ async fn handle_socket(
         }
     };
     let Some((my_id, mut rx, snapshot, liars, yatzy, farkle)) = attached else {
-        let _ = socket.send(Message::Close(None)).await;
+        close_with(&mut socket, CLOSE_BAD_TOKEN, "stale token").await;
         return;
     };
 

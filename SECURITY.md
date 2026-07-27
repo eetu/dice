@@ -40,9 +40,16 @@ Because the endpoint is un-authed and public, the backend self-limits so one
 source can't deny the service to everyone (defense-in-depth — a distributed DDoS
 is still the edge's job):
 
-- **Per-IP rate limits** — a token bucket on `POST /api/games` (default 10/min)
-  and `.../join` (60/min); over budget → **429**. This is the main defense
-  against one client filling `DICE_MAX_ROOMS` and 503-ing the whole service.
+- **Per-IP rate limits** — a token bucket on `POST /api/games` (default 10/min),
+  `.../join` (60/min) and `/api/client-error` (6/min); over budget → **429**. This
+  is the main defense against one client filling `DICE_MAX_ROOMS` and 503-ing the
+  whole service.
+- **The error-report endpoint is the only other un-authed write**, so it's kept
+  deliberately narrow: 1 KiB body cap (route-scoped, vs the global 16 KiB), a
+  closed `kind` enum (anything else → **400**, never recorded — it's a metric
+  attribute, so an open set would let anyone mint label values), and every text
+  field stripped of control characters and truncated to 200 chars before logging
+  (no log injection, no unbounded ingest).
 - **WebSocket caps** — per-IP (`DICE_WS_PER_IP`, default 24) and global
   (`DICE_MAX_WS`, 20000) concurrent-connection limits; over the cap the handshake
   is refused with **429**. A per-connection inbound-message budget
@@ -79,7 +86,12 @@ bind/TTL config only) is gitignored. Containers run as a non-root UID (1000).
 
 - Multi-tenant hardening, moderation, or defenses against a determined hostile
   user in your own game (it's a casual party app).
-- Persistence, audit logs, or abuse forensics.
+- Persistence or abuse forensics. (Error *telemetry* is in scope and opt-in: the
+  browser can report why it failed to start via `POST /api/client-error`, which is
+  rate limited per IP, body-capped at 1 KiB, accepts only a closed `kind` enum,
+  and sanitizes + truncates every text field before it's logged. It exists to make
+  bug reports actionable, not to identify users — no IDs, no correlation, and
+  nothing is stored unless an OTLP endpoint is configured.)
 
 ## Reporting
 
