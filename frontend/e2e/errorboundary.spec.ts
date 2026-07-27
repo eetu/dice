@@ -83,6 +83,56 @@ test("a render error shows the error card and reports itself as 'render'", async
   await ctx.close();
 });
 
+// Shipped bug, caught by its own telemetry within the hour: the watchdog's
+// timeout fired on every session that stayed open past it, and since the app HAD
+// booted, `show()` relabelled it `runtime` — so a healthy page reported
+// "timed out waiting for the app to start". One false report per session, which
+// would bury every real signal.
+test("a healthy page reports nothing, even past the watchdog timeout", async ({
+  browser,
+}) => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  // BEFORE navigating: the watchdog's timer is registered during page load, and a
+  // clock installed afterwards can't wind a timer the real clock already owns
+  // (which quietly made this test vacuous the first time).
+  await page.clock.install();
+  await captureBeacons(page);
+
+  await page.goto("/");
+  // The app must still boot under a faked clock, or the rest proves nothing.
+  await expect(
+    page.getByRole("button", { name: "Create a game" }),
+  ).toBeVisible();
+
+  await page.clock.fastForward("00:30"); // well past the 12s watchdog
+
+  expect(await beaconKinds(page)).toEqual([]);
+  await expect(page.locator("#boot-fail")).toBeHidden();
+
+  await ctx.close();
+});
+
+// A dead or expired code is the single most common 404 on this app. It's a normal
+// outcome with a correct message, not an app failure worth reporting.
+test("an expired game code is not reported as an error", async ({
+  browser,
+}) => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await captureBeacons(page);
+  await page.addInitScript(() => localStorage.setItem("dice:name", "Guest"));
+
+  await page.goto("/g/ZZZZZ");
+  await expect(
+    page.getByRole("heading", { name: "Game not found" }),
+  ).toBeVisible();
+
+  expect(await beaconKinds(page)).toEqual([]);
+
+  await ctx.close();
+});
+
 test("an uncaught error after boot reports as 'runtime', not 'boot'", async ({
   browser,
 }) => {
