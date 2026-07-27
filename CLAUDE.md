@@ -31,9 +31,20 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   forgeable limits (no proxy, trust on). Serving uses
   `into_make_service_with_connect_info::<SocketAddr>()` so handlers see the peer.
 - **In-memory, ephemeral by default.** No database. All game state lives in
-  `Arc<Mutex<HashMap<Code, Arc<Mutex<Room>>>>>`. A background reaper drops rooms
-  idle past `DICE_TTL_SECS` (default 2h); their code then 404s. A hard crash
-  loses all games. **Optional graceful-restart persistence** (`backend/src/persist.rs`,
+  `Arc<Mutex<HashMap<Code, Arc<Mutex<Room>>>>>`. A hard crash loses all games.
+- **A room outlives its players' attention.** Three ways one ends, and the
+  distinction matters because an invite link already shared dies with it:
+  1. the last HUMAN explicitly leaves → destroyed at once (`ws.rs`, `leave` only —
+     a dropped socket does NOT count), freeing the code;
+  2. idle past `DICE_TTL_SECS` → the reaper drops it (prod runs **24h**: a link
+     shared in the evening must still work the next day, and a 1h TTL was the
+     single biggest source of "the link didn't work");
+  3. at `DICE_MAX_ROOMS`, a create evicts the least-recently-active room **with
+     nobody connected** rather than 503-ing (`routes::evict_stalest_idle`). This
+     is load-bearing with a long TTL: a closed tab never sends `leave`, so the
+     table fills with abandoned games and a plain 503 would block ALL new games
+     for hours. A room someone is connected to is never evicted — if every room
+     is occupied, the create genuinely fails (503). **Optional graceful-restart persistence** (`backend/src/persist.rs`,
   opt-in via `DICE_STATE_FILE`): on SIGTERM/SIGINT the rooms are flushed to one
   JSON file and reloaded (then the file is consumed) on the next boot, so a
   deploy/reboot resumes instead of dropping games. The client's WS auto-reconnect
@@ -133,10 +144,12 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
 - `just dev` → backend on `:3040` (bacon, hot-reload), SPA on `:5173` (proxies
   `/api`, `/status`, `/ws` → `:3040`). Open two browsers to test multiplayer.
 - Config (backend, via `backend/.env`): `DICE_BIND` (`0.0.0.0:3040`),
-  `DICE_TTL_SECS` (7200, min 1), `DICE_MAX` (8), `DICE_MAX_ROOMS` (5000),
+  `DICE_TTL_SECS` (7200 default, min 1; prod 86400), `DICE_MAX` (8),
+  `DICE_MAX_ROOMS` (5000),
   `DICE_MAX_PLAYERS` (16), `STATIC_DIR` (`./dist`, prod only), `DICE_STATE_FILE`
   (unset → ephemeral; a path → persist games across a graceful restart). Caps bound memory
-  on the public endpoint (`/api/games` → 503 when full, join → 409). Abuse
+  on the public endpoint (`/api/games` → 503 only when every room is occupied,
+  else it evicts the stalest idle one; join → 409). Abuse
   guards: `DICE_TRUST_PROXY` (false), `DICE_RL_CREATE_PER_MIN` (10),
   `DICE_RL_JOIN_PER_MIN` (60), `DICE_RL_CLIENT_ERR_PER_MIN` (6),
   `DICE_WS_PER_IP` (24), `DICE_MAX_WS` (20000),

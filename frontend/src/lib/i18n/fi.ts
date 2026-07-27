@@ -17,7 +17,10 @@ export const fi: Catalog = {
   scanInvalid: "Tämä ei ole dice-pelin koodi",
   scanDenied: "Kameran käyttö estetty — salli se asetuksista",
   scanNoCam: "Kameraa ei löytynyt",
-  joinPromptTitle: "Valitse nimi liittyäksesi",
+  namePromptTitle: "Valitse nimi",
+  namePromptBody: (assigned: string) =>
+    `Olet pelissä nimellä ${assigned}. Voit vaihtaa sen tässä tai pitää sen.`,
+  saveName: "Tallenna",
   errNoGame: (code: string) =>
     `Peliä "${code}" ei löydy — se on ehkä vanhentunut.`,
   storageBlocked:

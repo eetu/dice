@@ -41,9 +41,9 @@ Requires Rust, Node (see `frontend/.node-version`), `just`, and `bacon`.
 | Var                    | Default        | Meaning                                                       |
 | ---------------------- | -------------- | ------------------------------------------------------------ |
 | `DICE_BIND`            | `0.0.0.0:3040` | Listen address                                               |
-| `DICE_TTL_SECS`        | `7200`         | Idle lifetime of a game before reap (≥ 1)                    |
+| `DICE_TTL_SECS`        | `7200`         | Idle lifetime of a game before reap (≥ 1). Long is fine — see `DICE_MAX_ROOMS`, which keeps memory bounded regardless; the deployment runs 86400 so a link shared in the evening still works the next day |
 | `DICE_MAX`             | `8`            | Max dice per roll                                            |
-| `DICE_MAX_ROOMS`       | `5000`         | Max concurrent game rooms (bounds memory)                   |
+| `DICE_MAX_ROOMS`       | `5000`         | Max concurrent game rooms (bounds memory). At the cap a new game evicts the least-recently-active room **with nobody connected**; if every room is occupied, create returns 503 |
 | `DICE_MAX_PLAYERS`     | `16`           | Max players per room                                         |
 | `STATIC_DIR`           | `./dist`       | Built SPA to serve (prod)                                    |
 | `DICE_TRUST_PROXY`     | `false`        | Trust `X-Forwarded-For`/`X-Real-IP` for per-IP limits — see below |
