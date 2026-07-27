@@ -142,12 +142,29 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
   `DICE_WS_PER_IP` (24), `DICE_MAX_WS` (20000),
   `DICE_WS_MSGS_PER_SEC` (20). Full env table + the trust-proxy rule in
   `README.md`; rationale in `SECURITY.md`.
-- `just check` = clippy + rustfmt + `yarn validate`. `just test` = cargo + vitest.
-- **Changelog + releases**: add user-visible changes to `CHANGELOG.md` under
-  `[Unreleased]` as they land. `just release (patch|minor|major)` bumps the
-  version everywhere (Cargo workspace + `frontend/package.json` + lockfile),
-  rolls the changelog, commits, tags `vX.Y.Z`, pushes, and publishes the GitHub
-  release — the tag build then rolls the ghcr `X.Y` / `X` / `latest` aliases.
+- `just check` = clippy + rustfmt + `yarn validate` + a built-bundle syntax-floor
+  assertion. `just test` = cargo + vitest. (e2e is `cd frontend && yarn e2e`; the
+  spawned-binary Rust tests are `cargo test -p dice-integration -- --ignored`.)
+- **`main` requires a PR + a passing `ci-gate`** (a repo ruleset — note the
+  *legacy* branch-protection API reports "not protected", so check rulesets, not
+  that). An admin can bypass it, but bypassing skips the check that gates the
+  release, so don't.
+- **Changelog + releases** — two steps, because of the above:
+  1. add user-visible changes to `CHANGELOG.md` under `[Unreleased]` as they land;
+  2. `just release (patch|minor|major)` bumps the version everywhere (Cargo
+     workspace + `frontend/package.json` + lockfile), rolls the changelog onto a
+     `release/vX.Y.Z` branch, and opens its PR. It tags nothing;
+  3. merge that PR, then `just release-publish` tags the MERGED commit, pushes the
+     tag (the tag build publishes ghcr `X.Y.Z` + the rolling `X.Y` / `X` /
+     `latest` aliases) and publishes the GitHub release from that version's
+     changelog section. It refuses if the version is already tagged, if the
+     changelog has no section for it, or if any check on `main` failed.
+
+  The tag has to come after the merge: tagging the branch would point the release
+  at a commit that never reaches `main` (and vanishes on a squash merge).
+- The deployed host pulls `ghcr.io/eetu/dice:1` via `io.containers.autoupdate`, on
+  a daily `podman-auto-update.timer` — a release is live within ~24h, or
+  immediately with `ssh invinite.tech 'sudo podman auto-update'`.
 - Prod: the binary serves `dist/` with an SPA fallback; one origin, port 3040.
 
 ## Out of scope

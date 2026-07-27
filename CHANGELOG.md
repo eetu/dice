@@ -2,8 +2,9 @@
 
 Notable, user-visible changes. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versions follow semver. Add entries under **[Unreleased]** as changes land —
-`just release (patch|minor|major)` rolls that section into the next version
-(and refuses to cut a release while it's empty).
+`just release (patch|minor|major)` rolls that section into the next version on a
+release branch and opens its PR (refusing while the section is empty); after the
+merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
