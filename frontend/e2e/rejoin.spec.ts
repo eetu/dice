@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { setNameInDialog } from "./helpers";
+
 // Rejoin / drop scenarios — the reconnect path is load-bearing (phones sleep,
 // wifi flaps) and was a source of 1.0 inconsistencies. Each test drives the real
 // stack (backend + built SPA), same as the golden path.
@@ -69,8 +71,7 @@ test("a dropped current player can be skipped", async ({ browser }) => {
   const code = alice.url().split("/g/")[1];
 
   await bob.goto(`/g/${code}`);
-  await bob.getByPlaceholder("Anonymous").fill("Bob");
-  await bob.getByRole("button", { name: "Join" }).click();
+  await setNameInDialog(bob, "Bob");
   await expect(alice.locator(".players li")).toHaveCount(2);
 
   // Alice rolls → the turn passes to Bob.

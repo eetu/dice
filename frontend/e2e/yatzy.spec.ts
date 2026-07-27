@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { setNameInDialog } from "./helpers";
+
 // Yatzy end to end (mobile): the host picks the game in the lobby, a friend joins
 // before anyone rolls (so the pristine match re-deals to include them), then the
 // host rolls and scores a box and the turn passes.
@@ -25,8 +27,7 @@ test("yatzy: create, join, roll, score, turn passes (mobile)", async ({
 
   // Bob joins the link before any roll → he's dealt into the match, not spectating.
   await bob.goto(`/g/${code}`);
-  await bob.getByPlaceholder("Anonymous").fill("Bob");
-  await bob.getByRole("button", { name: "Join" }).click();
+  await setNameInDialog(bob, "Bob");
 
   // Both see the shared scorecard, with both players' columns.
   await expect(alice.locator(".yatzy table.card")).toBeVisible();

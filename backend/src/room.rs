@@ -1042,6 +1042,13 @@ impl Room {
         self.players.iter().filter(|p| !p.bot).count()
     }
 
+    /// Is anyone actually here right now? Distinct from `human_count`, which
+    /// counts seats including players whose socket has dropped. Used to pick a
+    /// safe eviction victim when the room table is full.
+    pub fn has_connected_human(&self) -> bool {
+        self.players.iter().any(|p| !p.bot && p.connected)
+    }
+
     /// Is this player a cheater bot? (Gates the biased roll paths — normal
     /// players' rolls never touch them.)
     fn is_cheater(&self, id: &str) -> bool {

@@ -19,7 +19,10 @@ export const en = {
   scanInvalid: "That's not a dice game code",
   scanDenied: "Camera access denied — allow it in settings",
   scanNoCam: "No camera available",
-  joinPromptTitle: "Pick a name to join",
+  namePromptTitle: "Pick a name",
+  namePromptBody: (assigned: string) =>
+    `You're in the game as ${assigned}. Change it here, or keep it.`,
+  saveName: "Save",
   // Everything else that can go wrong reaching the server lives in `joinFail`
   // below, keyed by the classified reason.
   errNoGame: (code: string) => `No game "${code}" — it may have expired.`,

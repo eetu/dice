@@ -160,9 +160,11 @@ async fn reap_loop(rooms: Rooms, ttl: Duration) {
             (before, map.len())
         };
         if before != after {
+            // `reason` separates this from a cap eviction (see routes.rs); the
+            // dashboard's `sum(dice_rooms_reaped)` is unaffected by the label.
             telemetry::metrics()
                 .rooms_reaped
-                .add((before - after) as u64, &[]);
+                .add((before - after) as u64, &telemetry::attr("reason", "ttl"));
             tracing::info!(
                 reaped = before - after,
                 remaining = after,

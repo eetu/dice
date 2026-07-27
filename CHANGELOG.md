@@ -10,6 +10,20 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 <!-- Add changes here as they land. -->
 
+### Improvements
+
+- **Opening an invite link puts you in the game straight away.** You're seated as
+  "Player 2" immediately and then asked for a name, rather than filling in a form
+  before you're let in — that form sat between the link and the table for over a
+  minute in practice, and a game can be closed in that time, so the link looked
+  broken through no fault of its own. If this browser already knows your name, the
+  question is skipped entirely.
+- **Games last a day instead of an hour**, so a link shared in the evening still
+  works the next morning. Memory stays bounded by the room cap rather than by
+  cutting games short: at the cap, starting a new game recycles the most stale
+  *abandoned* room. A room anyone is still connected to is never recycled — if
+  every game is occupied, starting a new one is refused instead.
+
 ## [1.0.4] - 2026-07-27
 
 ### Fixes

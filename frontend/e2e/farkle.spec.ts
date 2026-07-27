@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { setNameInDialog } from "./helpers";
+
 // Farkle end to end (mobile): host picks Farkle in the lobby, a friend joins
 // before anyone rolls (pristine re-deal), and the host rolls. The dice land and a
 // resolve action appears (Set aside, or Pass on a bust). The turn/bust/bank logic
@@ -23,8 +25,7 @@ test("farkle: create, join, and roll (mobile)", async ({ browser }) => {
   const code = alice.url().split("/g/")[1];
 
   await bob.goto(`/g/${code}`);
-  await bob.getByPlaceholder("Anonymous").fill("Bob");
-  await bob.getByRole("button", { name: "Join" }).click();
+  await setNameInDialog(bob, "Bob");
 
   // Both see the Farkle scoreboard (two player chips), Alice's is the active one.
   await expect(alice.locator(".farkle .chip")).toHaveCount(2);

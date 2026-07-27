@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { setNameInDialog } from "./helpers";
+
 // With 4+ players the Yatzy scorecard switches from the side-by-side matrix to a
 // paged single-player card (tabs + swipe) so it never scrolls horizontally.
 test("yatzy: large groups page one card at a time (mobile)", async ({
@@ -26,8 +28,7 @@ test("yatzy: large groups page one card at a time (mobile)", async ({
   // everyone, so the order reaches four).
   for (let i = 1; i < names.length; i++) {
     await pages[i].goto(`/g/${code}`);
-    await pages[i].getByPlaceholder("Anonymous").fill(names[i]);
-    await pages[i].getByRole("button", { name: "Join" }).click();
+    await setNameInDialog(pages[i], names[i]);
   }
 
   // Paged mode: a tab per player, and NO matrix table.

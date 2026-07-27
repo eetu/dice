@@ -6,6 +6,12 @@ for the game invariants. `yarn validate` (lint + format + typecheck) must be cle
 ## Structure
 
 - `routes/+page.svelte` — lobby (create / join by code).
+- Opening an invite link **joins immediately** — no name is asked for first (an
+  empty name becomes "Player N" server-side), then a dismissible rename dialog
+  appears, skipped entirely when this browser already has a name. The old
+  ask-first form sat between the link and the game for ~80s in the access logs,
+  long enough for the room to be closed underneath the newcomer. E2E specs drive
+  this through `e2e/helpers.ts::setNameInDialog` — keep it there, seven specs use it.
 - `routes/g/[code]/+page.svelte` — the game table (composition root); wires stores
   ↔ components, owns connect/leave.
 - `lib/stores/*.svelte.ts` — reactive state: `session` (name + per-game creds in

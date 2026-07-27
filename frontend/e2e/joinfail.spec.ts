@@ -47,8 +47,7 @@ for (const c of CASES) {
     );
 
     await guest.goto(`/g/${code}`);
-    await guest.getByPlaceholder("Anonymous").fill("Guest");
-    await guest.getByRole("button", { name: "Join" }).click();
+    // Refused, so there is no seat and no rename dialog — just the error.
 
     await expect(guest.getByRole("heading", { name: c.heading })).toBeVisible();
     // The server's own words, verbatim and selectable, so they can be relayed.

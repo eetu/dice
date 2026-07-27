@@ -76,8 +76,13 @@ async fn create_game(
         .unwrap_or_default();
     let mode = body.and_then(|b| b.mode);
     let mut map = st.rooms.lock().unwrap();
-    // Bound memory on this public, un-authed endpoint.
-    if map.len() >= st.cfg.max_rooms {
+    // Bound memory on this public, un-authed endpoint. At the cap, free the
+    // stalest ABANDONED room rather than refusing outright: rooms live a day now
+    // (`DICE_TTL_SECS`) and a closed tab never sends `leave`, so the table fills
+    // with games nobody is in — and a plain 503 would mean nobody can start a
+    // game until the reaper catches up hours later.
+    if map.len() >= st.cfg.max_rooms && !evict_stalest_idle(&mut map) {
+        // Every room has someone connected: the cap is doing its real job.
         return Err(AppError::Busy);
     }
     let code = gen_code(&map);
@@ -178,6 +183,37 @@ async fn status(State(st): State<AppState>) -> Json<serde_json::Value> {
     }))
 }
 
+/// Drop the least-recently-active room that nobody is connected to. Returns false
+/// when every room has a live human, which is the only case where refusing a
+/// create is the right answer.
+///
+/// Takes each room's lock briefly while holding the registry lock — the same
+/// pattern (and ordering) as the TTL reaper, and there's no `.await` inside.
+fn evict_stalest_idle(map: &mut std::collections::HashMap<String, Arc<Mutex<Room>>>) -> bool {
+    let victim = map
+        .iter()
+        .filter_map(|(code, room)| {
+            let r = room.lock().ok()?;
+            if r.has_connected_human() {
+                return None; // never evict a room someone is playing in
+            }
+            Some((r.last_activity, code.clone()))
+        })
+        .min_by_key(|(seen, _)| *seen)
+        .map(|(_, code)| code);
+    match victim {
+        Some(code) => {
+            tracing::info!(%code, "evicted stalest idle room to make space");
+            map.remove(&code);
+            crate::telemetry::metrics()
+                .rooms_reaped
+                .add(1, &crate::telemetry::attr("reason", "evicted"));
+            true
+        }
+        None => false,
+    }
+}
+
 // ---------- client error reports ----------
 
 /// The closed set of things the browser can report. It becomes a metric
@@ -252,9 +288,12 @@ async fn client_error(
         .add(1, &crate::telemetry::attr("kind", kind));
     // Exported as an OTLP log record when telemetry is on (see telemetry.rs);
     // otherwise it's just a local log line.
+    // `detail`, NOT `message`: a field named `message` IS the event's message in
+    // tracing, so it overwrote the "client error" literal — the exported record's
+    // body became the detail text and there was no stable marker to filter on.
     tracing::warn!(
         kind = %kind,
-        message = %message,
+        detail = %message,
         url = %url,
         ua = %ua,
         "client error"

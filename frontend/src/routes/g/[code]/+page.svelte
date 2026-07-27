@@ -46,15 +46,16 @@
 
   const code = $derived((page.params.code ?? "").toUpperCase());
 
-  let phase = $state<
-    "connecting" | "ready" | "notfound" | "error" | "ended" | "name"
-  >("connecting");
+  let phase = $state<"connecting" | "ready" | "notfound" | "error" | "ended">(
+    "connecting",
+  );
   let myId = $state<string | null>(null);
   let showSettings = $state(false);
   let showDiceTray = $state(false); // the free-mode dice-tray builder
   let showShareModal = $state(false); // header code → share panel (all modes)
   let confirmLeave = $state(false); // leaving is destructive — confirm first
-  let nameDraft = $state(""); // the name-prompt input (QR/link join, no stored name)
+  let nameDraft = $state(""); // the rename dialog's input
+  let askName = $state(false); // offer a rename after a fresh link/QR join
   // Why the last attempt failed, and the server's own words for it — so the
   // error card can say something true instead of "something went wrong".
   let reason = $state<FailReason>("unknown");
@@ -130,13 +131,15 @@
   );
 
   onMount(() => {
-    // Joining fresh via QR/link with no stored name → ask for one first (a
-    // returning member has creds + a name already, so connect straight away).
-    if (!session.credsFor(code) && !session.name.trim()) {
-      phase = "name";
-    } else {
-      connect();
-    }
+    // Join IMMEDIATELY, even with no name — an empty one becomes "Player N"
+    // server-side. Asking first put a form between the invite link and the game:
+    // the access log showed 80 seconds spent on it, and a room can be closed in
+    // that window (the host leaving as the last human frees the code), so the
+    // link "didn't work" through no fault of the link. The rename dialog below
+    // does the same job once you're safely in, and is skipped entirely for anyone
+    // this browser already has a name for.
+    askName = !session.credsFor(code) && !session.name.trim();
+    connect();
     shake.restore(); // re-arm shake from the stored on-device preference
     wakeLock.enable(); // keep the display awake during a slow round
     return () => {
@@ -266,9 +269,12 @@
     const n = v.trim();
     if (n && n !== myName) rename(n);
   }
+  /** Save the name chosen in the post-join dialog (empty = keep the assigned one). */
   function submitName() {
-    session.setName(nameDraft.trim());
-    connect();
+    const n = nameDraft.trim();
+    if (n && n !== myName) rename(n);
+    else session.setName(myName); // remember it, so the dialog stays skipped
+    askName = false;
   }
   async function leave() {
     confirmLeave = false;
@@ -343,28 +349,6 @@
         <code class="diag">{detail}</code>
       {/if}
       <button class="btn" onclick={retryConnect}>{i18n.m.retry}</button>
-    </div>
-  {:else if phase === "name"}
-    <div class="notice halo-card">
-      <h2>{i18n.m.joinPromptTitle}</h2>
-      <form
-        class="namegate"
-        onsubmit={(e) => {
-          e.preventDefault();
-          submitName();
-        }}
-      >
-        <!-- svelte-ignore a11y_autofocus -->
-        <input
-          bind:value={nameDraft}
-          placeholder={i18n.m.namePlaceholder}
-          aria-label={i18n.m.yourName}
-          maxlength="24"
-          autocomplete="off"
-          autofocus
-        />
-        <button type="submit">{i18n.m.join}</button>
-      </form>
     </div>
   {:else if !snap}
     <div class="notice">{i18n.m.connecting}</div>
@@ -535,6 +519,34 @@
       <p class="ver">dice v{__APP_VERSION__}</p>
     </Modal>
   {/if}
+
+  <!-- Post-join rename. You are already seated as "Player N" by the time this
+    appears, so it's dismissible: closing it keeps the assigned name. -->
+  <Modal
+    open={askName && !!snap}
+    label={i18n.m.namePromptTitle}
+    onClose={submitName}
+  >
+    <form
+      class="namegate"
+      onsubmit={(e) => {
+        e.preventDefault();
+        submitName();
+      }}
+    >
+      <p class="namegate-hint">{i18n.m.namePromptBody(myName)}</p>
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        bind:value={nameDraft}
+        placeholder={myName}
+        aria-label={i18n.m.yourName}
+        maxlength="24"
+        autocomplete="off"
+        autofocus
+      />
+      <button type="submit">{i18n.m.saveName}</button>
+    </form>
+  </Modal>
 
   <Modal
     open={showShareModal}
@@ -874,10 +886,17 @@
     padding: 0.6em 1.2em;
     font-weight: 600;
   }
+  /* Now a dialog rather than a gate: the hint spans the row above the input. */
   .namegate {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
-    margin-top: 1rem;
+  }
+  .namegate-hint {
+    flex: 1 0 100%;
+    margin: 0;
+    color: var(--halo-text-muted);
+    font-size: 0.9rem;
   }
   .namegate input {
     flex: 1;

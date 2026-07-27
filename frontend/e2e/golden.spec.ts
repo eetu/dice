@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { setNameInDialog } from "./helpers";
+
 // Golden path across two independent players (separate browser contexts =
 // separate localStorage identities): create → join → roll in turns, and the
 // result streams to both screens live. Also exercises the real SPA runtime
@@ -21,8 +23,7 @@ test("two players roll in turns and both see the result", async ({
 
   // Bob opens the shared link; with no stored name he's prompted for one.
   await bob.goto(`/g/${code}`);
-  await bob.getByPlaceholder("Anonymous").fill("Bob");
-  await bob.getByRole("button", { name: "Join" }).click();
+  await setNameInDialog(bob, "Bob");
 
   // Both see two players.
   await expect(alice.locator(".players li")).toHaveCount(2);
