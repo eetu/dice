@@ -140,6 +140,11 @@
         // Nothing rendered in time. Generous, because a slow phone on a slow
         // network isn't a failure — and the app clears this if it arrives late.
         setTimeout(function () {
+          // If it DID start, this timer is merely late (slow device, or a tab
+          // that was backgrounded — iOS suspends timers there). Reporting a
+          // timeout now would be a flat lie, and one per session at that: it
+          // drowned the real signals within an hour of shipping.
+          if (window.__diceBooted) return;
           show("boot", "timed out waiting for the app to start");
         }, 12000);
 

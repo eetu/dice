@@ -8,7 +8,12 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
-<!-- Add changes here as they land. -->
+### Fixes
+
+- The new error reporting no longer cries wolf: a healthy session reported a
+  phantom "timed out waiting for the app to start" once it had been open for 12
+  seconds, and an expired game code — a normal outcome with its own clear message
+  — was reported as a failure. Both drowned the reports that matter.
 
 ## [1.0.3] - 2026-07-27
 

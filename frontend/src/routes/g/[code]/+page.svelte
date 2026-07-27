@@ -175,7 +175,12 @@
         detail =
           e instanceof ApiError ? `${e.status} ${e.detail ?? ""}`.trim() : "";
         phase = reason === "notfound" ? "notfound" : "error";
-        report("join", `${reason}: ${detail || "no detail"}`);
+        // A dead or expired code is a normal outcome, not an app failure — and
+        // it's the most common 404 by a wide margin, so reporting it would bury
+        // the signals worth reading.
+        if (reason !== "notfound") {
+          report("join", `${reason}: ${detail || "no detail"}`);
+        }
         return;
       }
     }
