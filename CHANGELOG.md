@@ -8,6 +8,10 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
+<!-- Add changes here as they land. -->
+
+## [1.0.4] - 2026-07-27
+
 ### Fixes
 
 - The new error reporting no longer cries wolf: a healthy session reported a
