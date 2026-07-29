@@ -10,6 +10,8 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 <!-- Add changes here as they land. -->
 
+## [1.0.5] - 2026-07-29
+
 ### Improvements
 
 - **Opening an invite link puts you in the game straight away.** You're seated as
