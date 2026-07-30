@@ -1,18 +1,20 @@
 # dice
 
+**[Play it — dice.invinite.tech](https://dice.invinite.tech)**
+
 A realtime, no-auth, multiplayer dice roller. The first visitor creates a game
 and shares a short code / QR; everyone else joins the same live session and rolls
 in **turns**. Rolls stream to every screen and are kept in a running history for
 the game's lifetime. Games auto-expire when idle — a dead code just 404s.
 
-- 🎲 **Realistic 3D dice** — three.js + cannon-es physics; ivory / obsidian /
+- **Realistic 3D dice** — three.js + cannon-es physics; ivory / obsidian /
   ruby / emerald / gold materials, plus **nixie tube** dice via
   [`@glowbox`](https://github.com/eetu/glowbox).
-- 🔊 **On-device sound** — dice clacks synthesized with the Web Audio API.
-- 📱 **Throw it** — flick with the mouse on desktop, shake the phone on mobile
+- **On-device sound** — dice clacks synthesized with the Web Audio API.
+- **Throw it** — flick with the mouse on desktop, shake the phone on mobile
   (DeviceMotion), or just tap.
-- 🎨 Light / dark / auto UI theme; room-wide dice theme.
-- 🧩 Drag to reorder the turn order; change the number of dice live.
+- Light / dark / auto UI theme; room-wide dice theme.
+- Drag to reorder the turn order; change the number of dice live.
 
 ## Stack
 
