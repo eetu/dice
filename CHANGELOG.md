@@ -10,6 +10,18 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 <!-- Add changes here as they land. -->
 
+## [1.0.6] - 2026-07-30
+
+### Improvements
+
+- **The lobby wordmark is now a neon sign** — gold script beside two overlapping
+  glass dice, hanging unlit for a beat before the tubes strike alight when you
+  arrive. Tap a tube to rap the glass. It wears whichever theme you're in: glowing
+  glass in the dark, and in the light theme the dice invert to ink the card in
+  black rather than shine white light on a white page. Reduced motion skips the
+  strike-up and the sign is simply on. The tagline is now the sign's spoken
+  label instead of a line of text under it.
+
 ## [1.0.5] - 2026-07-29
 
 ### Improvements
