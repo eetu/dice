@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { createNeonSign, type NeonArt } from "@glowbox/neon";
+  import { createNeonSign, type NeonArt, type NeonSign } from "@glowbox/neon";
   import { onMount } from "svelte";
+
+  import { theme } from "$lib/stores/theme.svelte";
 
   type Props = {
     /** Accessible name — the canvas is an image to assistive tech, and the
@@ -9,10 +11,10 @@
   };
   let { label = "dice" }: Props = $props();
 
-  // The lobby sign: gold script "dice" behind two overlapping white dice —
-  // the composition from the glowbox /neon gallery (dice authored in nib).
-  // The front die is `opaque`: it CUTS the rear die's tubes shy of its edge,
-  // the way a sign maker ends a run where glass covers glass.
+  // The lobby sign: script "dice" beside two overlapping dice — the composition
+  // from the sibling glowbox /neon gallery (dice authored in nib). The front die
+  // is `opaque`: it CUTS the rear die's tubes shy of its edge, the way a sign
+  // maker ends a run where glass covers glass.
   const DIE_5 = [
     "M 26 8 L 74 8 C 83.941 8 92 16.059 92 26 L 92 74 C 92 83.941 83.941 92 74 92 L 26 92 C 16.059 92 8 83.941 8 74 L 8 26 C 8 16.059 16.059 8 26 8 Z",
     "M 36 28 C 36 32.418 32.418 36 28 36 C 23.582 36 20 32.418 20 28 C 20 23.582 23.582 20 28 20 C 32.418 20 36 23.582 36 28 Z",
@@ -27,53 +29,107 @@
     "M 178 50 C 178 54.418 174.418 58 170 58 C 165.582 58 162 54.418 162 50 C 162 45.582 165.582 42 170 42 C 174.418 42 178 45.582 178 50 Z",
     "M 200 72 C 200 76.418 196.418 80 192 80 C 187.582 80 184 76.418 184 72 C 184 67.582 187.582 64 192 64 C 196.418 64 200 67.582 200 72 Z",
   ];
-  const ART: NeonArt[] = [
-    {
-      d: DIE_3,
-      place: "left",
-      size: 0.62,
-      rotate: 9,
-      dx: -0.32,
-      dy: -0.22,
-      gas: "co2",
-    },
-    {
-      d: DIE_5,
-      place: "left",
-      size: 0.74,
-      rotate: -11,
-      dx: 0.18,
-      dy: 0.16,
-      gas: "co2",
-      opaque: true,
-    },
-  ];
+  // The dice are white glass, so their polarity follows the theme while the gold
+  // lettering always shines: white light on a white card is invisible, but the
+  // same tube ABSORBING inks the card — one sign, mixed polarity.
+  const artFor = (resolved: string): NeonArt[] => {
+    const polarity = resolved === "dark" ? "emit" : "absorb";
+    return [
+      {
+        d: DIE_3,
+        place: "left",
+        size: 0.62,
+        rotate: 9,
+        dx: -0.32,
+        dy: -0.22,
+        gas: "co2",
+        polarity,
+      },
+      {
+        d: DIE_5,
+        place: "left",
+        size: 0.74,
+        rotate: -11,
+        dx: 0.18,
+        dy: 0.16,
+        gas: "co2",
+        polarity,
+        opaque: true,
+      },
+    ];
+  };
 
   let canvas = $state<HTMLCanvasElement>();
+  // $state.raw: the sign is an opaque handle (owns a 2D context), not reactive data.
+  let sign = $state.raw<NeonSign | null>(null);
+
+  // The sign wears the theme: its wall is literally the card's own background,
+  // read off the live cascade rather than duplicating a token.
+  function cardBg(): string {
+    for (let n = canvas?.parentElement; n; n = n.parentElement) {
+      const c = getComputedStyle(n).backgroundColor;
+      if (c && c !== "transparent" && !c.startsWith("rgba(0, 0, 0, 0)"))
+        return c;
+    }
+    return getComputedStyle(document.body).backgroundColor || "#ffffff";
+  }
   onMount(() => {
     if (!canvas) return;
-    // The sign keeps its own dark wall (a real sign is a plaque) so the white
-    // dice read in the light theme too; the card provides the mounting.
-    const sign = createNeonSign(canvas, {
+    // Someone who just arrived gets the switch thrown for them: the glass hangs
+    // there unlit for a beat, then the tubes strike alight one after another.
+    // Reduced motion skips the show and is simply on.
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const s = createNeonSign(canvas, {
       text: "dice",
       gas: "gold",
-      art: ART,
+      art: artFor(theme.resolved),
       label,
       padding: 0.1,
+      wall: cardBg(),
+      on: reduced,
     });
-    return () => sign?.dispose();
+    sign = s;
+    const wake = reduced ? null : setTimeout(() => s?.power(true), 700);
+    return () => {
+      if (wake) clearTimeout(wake);
+      s?.dispose();
+      sign = null;
+    };
+  });
+
+  // Rap the glass: the tapped tube stutters. The sign attaches nothing itself —
+  // it answers `sectionAt`, we own the listener.
+  function rap(e: PointerEvent) {
+    const s = sign;
+    if (!s) return;
+    const tube = s.sectionAt(e.clientX, e.clientY);
+    if (tube != null) s.jolt(tube);
+  }
+
+  // Follow the toggle (and live OS changes in auto). One frame late on purpose:
+  // the root layout writes data-theme in its own effect, so the cascade has to
+  // settle before the card's new background can be read back.
+  $effect(() => {
+    const t = theme.resolved;
+    const s = sign;
+    if (!s) return;
+    const frame = requestAnimationFrame(() =>
+      s.setOptions({ wall: cardBg(), art: artFor(t) }),
+    );
+    return () => cancelAnimationFrame(frame);
   });
 </script>
 
-<div class="sign">
+<!-- The wrapper is presentational: rapping the glass is decoration, not an
+     action, and the canvas inside keeps the sign's own role="img" + label. -->
+<div class="sign" role="presentation" onpointerdown={rap}>
   <canvas bind:this={canvas}></canvas>
 </div>
 
 <style>
+  /* No plaque: the sign's wall matches the card, so the glass floats on it. */
   .sign {
     aspect-ratio: 2.2 / 1;
-    border-radius: var(--halo-radius);
-    overflow: hidden;
   }
   canvas {
     display: block;

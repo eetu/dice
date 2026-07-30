@@ -289,10 +289,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@glowbox/neon@npm:1.8.0-rc.1":
-  version: 1.8.0-rc.1
-  resolution: "@glowbox/neon@npm:1.8.0-rc.1"
-  checksum: 10/4a7a68d2f04a1b9bef5d794604c5b9897b92dc369cc3d120d8f92251654621da56e5237aad54159a04564669f09747828f40dc30bdabc2f21c757574e3c150ae
+"@glowbox/neon@npm:^1.8.0":
+  version: 1.8.0
+  resolution: "@glowbox/neon@npm:1.8.0"
+  checksum: 10/5c1e264b45c31177a6ae0528f7d36ca09dd6f8eeb749d984ef5364ab5f20b7dea4a13cb22a949782863dc47b0853c5947844034898c1645415ef05d253232806
   languageName: node
   linkType: hard
 
@@ -1287,7 +1287,7 @@ __metadata:
     "@anarkisti/igyb": "npm:^0.5.0"
     "@fontsource/inter": "npm:^5"
     "@fontsource/space-grotesk": "npm:^5"
-    "@glowbox/neon": "npm:1.8.0-rc.1"
+    "@glowbox/neon": "npm:^1.8.0"
     "@glowbox/nixie": "npm:^1.1.0"
     "@lucide/svelte": "npm:^1.22.0"
     "@playwright/test": "npm:^1.61.1"
