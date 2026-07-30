@@ -97,6 +97,10 @@ export const en = {
   crashBody:
     "The app hit an error it couldn't recover from. Trying again usually fixes it — if it doesn't, send the details below to whoever shared the link.",
   reload: "Reload",
+  // A URL that matches no route — a mistyped or truncated invite link, usually.
+  missingTitle: "Nothing here",
+  missingBody:
+    "That link doesn't lead anywhere. Head back to start a game, or join one with a code.",
 
   // Dice stage
   yourTurn: "Your turn",

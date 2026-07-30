@@ -2,19 +2,28 @@
 
 **[Play it — dice.invinite.tech](https://dice.invinite.tech)**
 
+![Two glowing neon dice beside the word dice in gold script](frontend/static/og.png)
+
 A realtime, no-auth, multiplayer dice roller. The first visitor creates a game
 and shares a short code / QR; everyone else joins the same live session and rolls
 in **turns**. Rolls stream to every screen and are kept in a running history for
 the game's lifetime. Games auto-expire when idle — a dead code just 404s.
 
-- **Realistic 3D dice** — three.js + cannon-es physics; ivory / obsidian /
-  ruby / emerald / gold materials, plus **nixie tube** dice via
-  [`@glowbox`](https://github.com/eetu/glowbox).
+- **Four games, picked by the host** — a plain turn-based roller, **Liar's Dice**
+  (hidden dice, bid or call the bluff), **Yatzy** (Nordic, 15-box scorecard) and
+  **Farkle** (push your luck to 10 000). The server scores all of them.
+- **Bots to fill the table** — easy, hard, or sneaky; anyone in the room can add
+  or remove one, and they play their turns on their own.
+- **Realistic 3D dice** — three.js + cannon-es physics; ivory / obsidian / ruby /
+  emerald / gold and the four elementals (fire / water / air / earth), plus
+  **nixie tube** dice via [`@glowbox`](https://github.com/eetu/glowbox).
 - **On-device sound** — dice clacks synthesized with the Web Audio API.
 - **Throw it** — flick with the mouse on desktop, shake the phone on mobile
   (DeviceMotion), or just tap.
-- Light / dark / auto UI theme; room-wide dice theme.
+- Light / dark / auto UI theme; room-wide dice theme and table surface.
 - Drag to reorder the turn order; change the number of dice live.
+- Installable (PWA), works in English and Suomi, and tells you what broke instead
+  of showing a blank page.
 
 ## Stack
 
@@ -31,10 +40,18 @@ just dev        # backend on :3040 (bacon), SPA on :5173 (vite, proxied)
 Open two browser windows, create a game in one, join with the code in the other.
 
 ```sh
-just check      # clippy + rustfmt + yarn validate
+just check      # clippy + rustfmt + yarn validate + the bundle's browser floor
 just test       # cargo + vitest
 just build      # SPA → dist/, then the release binary
 ```
+
+End-to-end specs drive the real stack (backend serving the built SPA):
+`cd frontend && yarn e2e` after a `just build`. The spawned-binary Rust
+integration tests are `cargo test -p dice-integration -- --ignored`.
+
+Assets are committed, regenerated on demand: `just icons` (PWA icons, from
+`frontend/static/*.svg` — needs librsvg + imagemagick) and `just og` (the link
+preview at the top of this file, screenshotted from the live lobby sign).
 
 Requires Rust, Node (see `frontend/.node-version`), `just`, and `bacon`.
 
@@ -136,7 +153,12 @@ so a deploy just runs the image and routes to it. Deployment-agnostic contract:
   joins (see `SECURITY.md`). Terminate TLS at the edge, but do **not** put it
   behind an auth proxy.
 - **Stateless:** all state is in memory — no database, no volumes, nothing to
-  back up. A restart drops every game (by design).
+  back up. A restart drops every game, unless you opt into `DICE_STATE_FILE`
+  (see _Surviving a restart_), which needs one small writable path.
+- **Link previews:** the shell's Open Graph tags (`frontend/src/app.html`) carry
+  absolute URLs pinned to `https://dice.invinite.tech` — OG requires absolute
+  ones and there's no SSR to fill in the live origin, so point them at your own
+  host if you deploy this elsewhere.
 - **Behind a reverse proxy:** set `DICE_BIND=127.0.0.1:3040` so the proxy is the
   only public listener, and **`DICE_TRUST_PROXY=true`** so per-IP limits see the
   real client (see _Abuse protection_). `/ws` is same-origin, so a normal HTTP

@@ -58,6 +58,11 @@ test:
 icons:
     cd frontend && bash scripts/gen-icons.sh
 
+# Regenerate the link-preview image (static/og.png) by shooting the live lobby
+# sign. Builds first, since it serves dist/. Needs the playwright chromium.
+og:
+    cd frontend && {{yarn}} build && node scripts/gen-og.mjs
+
 # Releasing is TWO steps, because `main` requires a pull request and a passing
 # `ci-gate` (a repo ruleset). Pushing the release commit straight to main only
 # ever worked as an admin bypass, which skips the very check that should gate a

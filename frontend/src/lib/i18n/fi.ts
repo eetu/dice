@@ -92,6 +92,9 @@ export const fi: Catalog = {
   crashBody:
     "Sovellus törmäsi virheeseen, josta se ei toipunut. Uudelleenyritys yleensä korjaa asian — jos ei, lähetä alla olevat tiedot linkin jakajalle.",
   reload: "Lataa uudelleen",
+  missingTitle: "Täällä ei ole mitään",
+  missingBody:
+    "Tämä linkki ei johda mihinkään. Palaa alkuun aloittamaan peli tai liity peliin koodilla.",
 
   // Dice stage
   yourTurn: "Sinun vuorosi",
