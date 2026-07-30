@@ -289,6 +289,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@glowbox/neon@npm:^1.8.0":
+  version: 1.8.0
+  resolution: "@glowbox/neon@npm:1.8.0"
+  checksum: 10/5c1e264b45c31177a6ae0528f7d36ca09dd6f8eeb749d984ef5364ab5f20b7dea4a13cb22a949782863dc47b0853c5947844034898c1645415ef05d253232806
+  languageName: node
+  linkType: hard
+
 "@glowbox/nixie@npm:^1.1.0":
   version: 1.1.0
   resolution: "@glowbox/nixie@npm:1.1.0"
@@ -1280,6 +1287,7 @@ __metadata:
     "@anarkisti/igyb": "npm:^0.5.0"
     "@fontsource/inter": "npm:^5"
     "@fontsource/space-grotesk": "npm:^5"
+    "@glowbox/neon": "npm:^1.8.0"
     "@glowbox/nixie": "npm:^1.1.0"
     "@lucide/svelte": "npm:^1.22.0"
     "@playwright/test": "npm:^1.61.1"

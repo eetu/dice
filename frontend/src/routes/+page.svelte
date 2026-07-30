@@ -5,11 +5,11 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { api, type FailReason, failReason, type Mode } from "$lib/api";
+  import DiceSign from "$lib/components/DiceSign.svelte";
   import LangToggle from "$lib/components/LangToggle.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import QrScanner from "$lib/components/QrScanner.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
-  import Wordmark from "$lib/components/Wordmark.svelte";
   import { i18n } from "$lib/i18n/i18n.svelte";
   import { storage } from "$lib/storage";
   import { session } from "$lib/stores/session.svelte";
@@ -87,8 +87,7 @@
 <div class="page">
   <main class="lobby halo-card">
     <div class="brand">
-      <Wordmark size="2.6rem" />
-      <p class="tagline">{i18n.m.tagline}</p>
+      <DiceSign label={i18n.m.tagline} />
     </div>
 
     <label class="field">
@@ -218,13 +217,7 @@
     padding: 2rem;
   }
   .brand {
-    text-align: center;
     margin-bottom: 0.5rem;
-  }
-  .tagline {
-    margin: 0.4rem 0 0;
-    color: var(--halo-text-muted);
-    font-size: 0.95rem;
   }
   .field {
     display: flex;
