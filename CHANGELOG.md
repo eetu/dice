@@ -8,6 +8,10 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
+<!-- Add changes here as they land. -->
+
+## [1.0.7] - 2026-07-30
+
 ### Improvements
 
 - **An invite link now brings a picture with it.** Pasted into a chat, a game link
