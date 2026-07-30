@@ -8,6 +8,10 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
+<!-- Add changes here as they land. -->
+
+## [1.0.6] - 2026-07-30
+
 ### Improvements
 
 - **The lobby wordmark is now a neon sign** — gold script beside two overlapping
