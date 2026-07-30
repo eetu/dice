@@ -33,6 +33,10 @@ for the game invariants. `yarn validate` (lint + format + typecheck) must be cle
   and the inline watchdog in `app.html` are the three user-visible surfaces; they
   share `components/ErrorCard.svelte` (except the watchdog, which can't — it must
   survive the bundle and CSS being broken, so it's hand-rolled ES5).
+- `routes/+error.svelte` is also the **404 page** (there is no separate one — an
+  unmatched URL 404s in the client router). It branches on `page.status === 404`
+  to a "Nothing here" card; `ErrorCard`'s `details` + action are optional for it,
+  since a typo needs neither a UA dump nor a Reload button.
 
 ## Notes
 
@@ -48,3 +52,12 @@ for the game invariants. `yarn validate` (lint + format + typecheck) must be cle
 - Navigation must use `resolve()` (`svelte/no-navigation-without-resolve`).
 - Icons: edit `static/favicon.svg` / `static/icon-maskable.svg`, then
   `just icons` (librsvg + imagemagick) to regenerate the committed PNGs.
+- **Link preview**: `static/og.png` (1200×630, committed) + the Open Graph tags in
+  `app.html`. `just og` regenerates it by screenshotting the LIVE lobby sign
+  (`scripts/gen-og.mjs`: serves `dist/`, hides everything but `.brand`, dark +
+  reduced-motion at DPR 1 so the canvas paints at final resolution) — so the
+  thumbnail can't drift from the app. The tags are static and generic on purpose:
+  a crawler runs no JS and the same shell answers `/` and every `/g/CODE`. The
+  image URL is absolute and pinned to `dice.invinite.tech` (OG needs absolute;
+  relative paths are resolved inconsistently), and there's no `og:url` — some
+  clients would make it the tap target and send an invite to the lobby.

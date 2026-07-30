@@ -8,7 +8,18 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
-<!-- Add changes here as they land. -->
+### Improvements
+
+- **An invite link now brings a picture with it.** Pasted into a chat, a game link
+  used to be a bare URL — a code, no title, nothing to tap with confidence. It now
+  unfurls with the neon dice sign, the app's name and a line about what it is.
+
+### Fixes
+
+- **A mistyped link now says "Nothing here" instead of "Something broke".** A URL
+  that isn't a real page (a truncated or garbled invite link) landed on the crash
+  card, which claimed the app had failed and asked you to relay diagnostics — for
+  a typo. It now gets its own short notice and a way back to the start.
 
 ## [1.0.6] - 2026-07-30
 

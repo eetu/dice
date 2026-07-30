@@ -133,6 +133,40 @@ test("an expired game code is not reported as an error", async ({
   await ctx.close();
 });
 
+// The other everyday wrong URL: one that matches no route at all (a truncated or
+// mistyped invite link). The backend serves the SPA shell for it, so the client
+// router is what 404s — and it used to land on the crash card, telling someone
+// with a typo that the app broke and to relay a stack of diagnostics.
+test("an unknown route shows the not-found card, not the crash card", async ({
+  browser,
+}) => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await captureBeacons(page);
+
+  await page.goto("/no-such-page");
+
+  await expect(
+    page.getByRole("heading", { name: "Nothing here" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Something broke" }),
+  ).toBeHidden();
+  // No build/UA dump and no Reload: nothing broke, and reloading can't fix a typo.
+  await expect(page.locator("pre.diag")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reload" })).toHaveCount(0);
+
+  // The one action gets you somewhere useful.
+  await page.getByRole("link", { name: "Back to start" }).click();
+  await expect(
+    page.getByRole("button", { name: "Create a game" }),
+  ).toBeVisible();
+
+  expect(await beaconKinds(page)).toEqual([]);
+
+  await ctx.close();
+});
+
 test("an uncaught error after boot reports as 'runtime', not 'boot'", async ({
   browser,
 }) => {

@@ -122,7 +122,11 @@ justfile    `just dev` runs backend (bacon) + frontend (vite) together
 
   A boundary deliberately does NOT catch event-handler or async errors (Svelte
   doesn't route them through boundaries) — that's why the window-level handlers
-  stay. `kind` is a CLOSED enum mirrored in `backend/src/routes.rs` (it's a metric
+  stay. A **404 is the one route error that isn't a crash**: no route matches, so
+  the client router lands on `+error.svelte` with status 404 (the backend serves
+  the shell for every path, so there's no server 404 page to hit). It branches to
+  a plain "Nothing here" card — no diagnostics, no Reload, nothing reported —
+  because a mistyped invite link is not something the user should relay to us. `kind` is a CLOSED enum mirrored in `backend/src/routes.rs` (it's a metric
   attribute, so cardinality must be bounded); message/url/UA are sanitized +
   truncated server-side; the endpoint is per-IP rate limited
   (`DICE_RL_CLIENT_ERR_PER_MIN`) with a 1 KiB body cap, since it's an un-authed

@@ -30,6 +30,45 @@
       content="black-translucent"
     />
     <title>dice</title>
+
+    <!-- Link preview (Open Graph / Twitter). A shared invite link is how everyone
+      but the host arrives, and it pastes into a chat as a bare URL unless these
+      tags exist — a code with no picture and no promise reads like spam.
+      Deliberately STATIC and generic: there's no SSR, a crawler runs no JS, and
+      the same shell is served for `/` and every `/g/CODE`, so nothing here can
+      name the game (which is just as well — a preview shouldn't put a live code
+      in someone else's chat history). Absolute URLs pinned to the canonical
+      origin, because OG requires them and scrapers resolve a relative path
+      inconsistently or not at all. No `og:url`: some clients treat it as the
+      canonical target and would send a tap on the preview to the lobby instead of
+      the game the link was for. Regenerate the image with `just og`. -->
+    <meta
+      name="description"
+      content="Realtime multiplayer dice. Share a code, roll in turns — Liar's Dice, Yatzy, Farkle, or just dice. No signup."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="dice" />
+    <meta property="og:locale" content="en" />
+    <meta property="og:title" content="dice — roll dice together, in turns" />
+    <meta
+      property="og:description"
+      content="Realtime multiplayer dice. Share a code, roll in turns — Liar's Dice, Yatzy, Farkle, or just dice. No signup."
+    />
+    <meta property="og:image" content="https://dice.invinite.tech/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="A neon sign: two glowing dice beside the word dice in gold script"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="dice — roll dice together, in turns" />
+    <meta
+      name="twitter:description"
+      content="Realtime multiplayer dice. Share a code, roll in turns — Liar's Dice, Yatzy, Farkle, or just dice. No signup."
+    />
+    <meta name="twitter:image" content="https://dice.invinite.tech/og.png" />
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">

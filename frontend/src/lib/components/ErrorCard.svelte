@@ -9,10 +9,14 @@
   type Props = {
     title: string;
     body: string;
-    /** Pre-formatted, newline-separated. Never HTML — it can contain a URL. */
-    details: string;
-    actionLabel: string;
-    onAction: () => void;
+    /** Pre-formatted, newline-separated. Never HTML — it can contain a URL.
+     *  Omitted when nothing actually broke (a 404): a build + UA dump reads as
+     *  "the app is broken, please report it" when the URL was just wrong. */
+    details?: string;
+    /** Primary action. Omit when there is nothing to retry — then "Back to start"
+     *  is the button rather than a ghost link beside one. */
+    actionLabel?: string;
+    onAction?: () => void;
   };
   let { title, body, details, actionLabel, onAction }: Props = $props();
 </script>
@@ -20,10 +24,16 @@
 <div class="notice halo-card">
   <h2>{title}</h2>
   <p>{body}</p>
-  <pre class="diag">{details}</pre>
+  {#if details}
+    <pre class="diag">{details}</pre>
+  {/if}
   <div class="actions">
-    <button class="btn" onclick={onAction}>{actionLabel}</button>
-    <a class="ghost" href={resolve("/")}>{i18n.m.backToStart}</a>
+    {#if actionLabel && onAction}
+      <button class="btn" onclick={onAction}>{actionLabel}</button>
+      <a class="ghost" href={resolve("/")}>{i18n.m.backToStart}</a>
+    {:else}
+      <a class="btn" href={resolve("/")}>{i18n.m.backToStart}</a>
+    {/if}
   </div>
 </div>
 
@@ -69,6 +79,7 @@
     margin-top: 1rem;
     background: var(--halo-accent);
     color: var(--halo-on-accent);
+    text-decoration: none;
     border: none;
     border-radius: var(--halo-radius);
     padding: 0.6em 1.2em;
