@@ -617,10 +617,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sveltejs/load-config@npm:^0.2.0":
-  version: 0.2.0
-  resolution: "@sveltejs/load-config@npm:0.2.0"
-  checksum: 10/cc2258aaeadbc365db25461888ba4bba90ed48e296315c860922751a10f4c3ece835029db2d0a59ce9a015e5c588bfc04c21b99d91c2e06950488cdc2bc9d1ce
+"@sveltejs/load-config@npm:^0.2.1":
+  version: 0.2.1
+  resolution: "@sveltejs/load-config@npm:0.2.1"
+  checksum: 10/c850d7d04fee34c5a2842bf7c0f32baf396be7b91ec457f52d871112bbb04ef4f4154a0717d29da17d4fa94a6cbdfddf8dd453e842e853ae5a7d7dd8050b5792
   languageName: node
   linkType: hard
 
@@ -1306,8 +1306,8 @@ __metadata:
     prettier: "npm:^3.9.6"
     prettier-plugin-svelte: "npm:^4.0.1"
     qrcode: "npm:^1.5.4"
-    svelte: "npm:^5.56.7"
-    svelte-check: "npm:^4.4.6"
+    svelte: "npm:^5.56.8"
+    svelte-check: "npm:^4.7.4"
     three: "npm:^0.185.1"
     typescript: "npm:^6.0.2"
     vite: "npm:^8.1.4"
@@ -2712,22 +2712,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"svelte-check@npm:^4.4.6":
-  version: 4.7.3
-  resolution: "svelte-check@npm:4.7.3"
+"svelte-check@npm:^4.7.4":
+  version: 4.7.4
+  resolution: "svelte-check@npm:4.7.4"
   dependencies:
     "@jridgewell/trace-mapping": "npm:^0.3.25"
-    "@sveltejs/load-config": "npm:^0.2.0"
+    "@sveltejs/load-config": "npm:^0.2.1"
     chokidar: "npm:^4.0.1"
     fdir: "npm:^6.2.0"
     picocolors: "npm:^1.0.0"
     sade: "npm:^1.7.4"
   peerDependencies:
     svelte: ^4.0.0 || ^5.0.0-next.0
-    typescript: ">=5.0.0"
+    typescript: ^5.0.0 || ^6.0.0
   bin:
     svelte-check: bin/svelte-check
-  checksum: 10/8d41a73e7356f63ba4d6658d9e343f391bee3c552c8640b7e7326f98a540b5fb04db8d7d5e3525d398a9385ec4e2a3d5f7d7accc5b5dc5c8b9f16545a8162fa7
+  checksum: 10/741f0a237f5bedf207b9e9e182f42fd2b4c5e9f52260efb5e43c335e732adce9ace8e46427c021f947ef4f4f17edc076085ffc11c6470b427a7b2fb4d6bf6932
   languageName: node
   linkType: hard
 
@@ -2751,9 +2751,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"svelte@npm:^5.56.7":
-  version: 5.56.7
-  resolution: "svelte@npm:5.56.7"
+"svelte@npm:^5.56.8":
+  version: 5.56.8
+  resolution: "svelte@npm:5.56.8"
   dependencies:
     "@jridgewell/remapping": "npm:^2.3.4"
     "@jridgewell/sourcemap-codec": "npm:^1.5.0"
@@ -2771,7 +2771,7 @@ __metadata:
     locate-character: "npm:^3.0.0"
     magic-string: "npm:^0.30.11"
     zimmerframe: "npm:^1.1.2"
-  checksum: 10/026e6653992fbdb78d1ea210a9ff43ac7f55afe42f47cf47927d0a3a366246d0eb36941a4f35fb07daf585c74b60a05941ee17e29b1ea708b8559ed2b486bad3
+  checksum: 10/767909f6b4b5ae94af0647f4b43bd67e755d41123ea82bb7e8d569d3e04aee72b32aa6a8f41deaa3f137393b9a050ca54e2443ef0627f61406c8f38233f89240
   languageName: node
   linkType: hard
 
