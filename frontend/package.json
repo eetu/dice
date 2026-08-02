@@ -28,7 +28,7 @@
     "@fontsource/space-grotesk": "^5",
     "@glowbox/neon": "^1.8.0",
     "@glowbox/nixie": "^1.1.0",
-    "@lucide/svelte": "^1.22.0",
+    "@lucide/svelte": "^1.27.0",
     "cannon-es": "^0.20.0",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",

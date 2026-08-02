@@ -397,12 +397,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@lucide/svelte@npm:^1.22.0":
-  version: 1.25.0
-  resolution: "@lucide/svelte@npm:1.25.0"
+"@lucide/svelte@npm:^1.27.0":
+  version: 1.27.0
+  resolution: "@lucide/svelte@npm:1.27.0"
   peerDependencies:
     svelte: ^5
-  checksum: 10/02e1ceab90aa29af5aff59c329e8fad55e557bc0e467fa9c4b87d782930da32a7415d6fb2fd8c5af17d087e55a483e5303172ded37caaa2f079c2191083404e9
+  checksum: 10/b76c5a95f66000dfeb83adb6a7cb4a29eb707d5fab0d840b3ac00112c6d93b212d380e89246f1027dc3528c602433ac98cb3ed5edc351dffae6420ba5a523eef
   languageName: node
   linkType: hard
 
@@ -1289,7 +1289,7 @@ __metadata:
     "@fontsource/space-grotesk": "npm:^5"
     "@glowbox/neon": "npm:^1.8.0"
     "@glowbox/nixie": "npm:^1.1.0"
-    "@lucide/svelte": "npm:^1.22.0"
+    "@lucide/svelte": "npm:^1.27.0"
     "@playwright/test": "npm:^1.61.1"
     "@sveltejs/adapter-static": "npm:^3.0.10"
     "@sveltejs/kit": "npm:^2.70.1"
