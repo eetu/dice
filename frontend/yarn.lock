@@ -296,10 +296,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@glowbox/nixie@npm:^1.1.0":
-  version: 1.1.0
-  resolution: "@glowbox/nixie@npm:1.1.0"
-  checksum: 10/b2fad37e15e6be2dcd2706988b9f027f9966c72c9548750df5e518c72b2ad574e13296a3c0529ca018f48bf4a7e9a9ec8f764ea99cdded2738432e8ffe855a6d
+"@glowbox/nixie@npm:^1.9.0":
+  version: 1.9.0
+  resolution: "@glowbox/nixie@npm:1.9.0"
+  checksum: 10/62964dae4439ce7ec435a45822d655288fb9238d38bbf3c456c53ad676d8f562bc2c7f2bae59ecb40ca7ed7e384ddddadb907925476c40d047b1a3d442713c36
   languageName: node
   linkType: hard
 
@@ -1297,7 +1297,7 @@ __metadata:
     "@fontsource/inter": "npm:^5"
     "@fontsource/space-grotesk": "npm:^5"
     "@glowbox/neon": "npm:^1.8.0"
-    "@glowbox/nixie": "npm:^1.1.0"
+    "@glowbox/nixie": "npm:^1.9.0"
     "@lucide/svelte": "npm:^1.27.0"
     "@playwright/test": "npm:^1.61.1"
     "@sveltejs/adapter-static": "npm:^3.0.10"
