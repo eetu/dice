@@ -42,7 +42,7 @@
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@types/node": "^26",
     "@types/qrcode": "^1.5.5",
-    "@types/three": "^0.185.3",
+    "@types/three": "^0.185.4",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitest/browser-playwright": "^4.1.10",
     "eslint": "^10.8.0",
