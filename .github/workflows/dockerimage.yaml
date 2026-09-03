@@ -66,9 +66,41 @@ jobs:
           sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
-        with:
-          package-name: dice
-          package-type: container
-          min-versions-to-keep: 5
-          delete-only-untagged-versions: true
+      # Prune untagged image versions, keeping the 5 newest — the housekeeping
+      # actions/delete-package-versions@v5 used to do. Inlined against the REST
+      # API because that action is unmaintained (last release Jan 2024, still
+      # declares `using: node20`, which the runners now force onto node24 with a
+      # deprecation warning) — and this keeps a third-party action out of the job
+      # that publishes the deployed image.
+      #
+      # Untagged versions are the intermediate manifests each multi-arch build
+      # leaves behind; the tagged ones (1.0.8, 1.0, 1, latest, main) are never
+      # candidates. Pruning is housekeeping, so it must never fail a release:
+      # `continue-on-error` covers a token or registry hiccup, and the cap below
+      # stops a surprising API response from turning into a mass delete.
+      - name: Prune untagged image versions
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ github.event.repository.name }}
+          KEEP: "5"
+        run: |
+          set -euo pipefail
+          stale="$RUNNER_TEMP/stale-versions.txt"
+          gh api --paginate \
+            "/users/$OWNER/packages/container/$PACKAGE/versions?per_page=100" \
+            --jq '.[] | select((.metadata.container.tags // []) | length == 0) | "\(.created_at)\t\(.id)"' \
+            | sort -r | tail -n "+$((KEEP + 1))" | cut -f2 > "$stale"
+          count=$(grep -c . "$stale" || true)
+          echo "untagged versions beyond the newest $KEEP: $count"
+          if [ "$count" -gt 50 ]; then
+            echo "refusing to delete $count versions in one run — check the API response" >&2
+            exit 1
+          fi
+          while read -r id; do
+            [ -n "$id" ] || continue
+            echo "deleting untagged version $id"
+            gh api -X DELETE "/users/$OWNER/packages/container/$PACKAGE/versions/$id" \
+              || echo "warn: could not delete $id" >&2
+          done < "$stale"
