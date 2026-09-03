@@ -8,6 +8,10 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
+<!-- Add changes here as they land. -->
+
+## [1.0.8] - 2026-09-03
+
 ### Maintenance
 
 - **Dependency refresh across the app and the server.** The glowbox neon and nixie
