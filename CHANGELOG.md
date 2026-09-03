@@ -8,7 +8,12 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
-<!-- Add changes here as they land. -->
+### Maintenance
+
+- **Dependency refresh across the app and the server.** The glowbox neon and nixie
+  rendering libraries, the build and test toolchain, and the whole Rust crate tree
+  are on current releases. Nothing about how the app looks or plays changes — the
+  lobby sign was compared pixel-for-pixel before and after, in both themes.
 
 ## [1.0.7] - 2026-07-30
 
