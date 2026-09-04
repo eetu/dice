@@ -8,6 +8,10 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
+<!-- Add changes here as they land. -->
+
+## [1.0.9] - 2026-09-04
+
 ### Fixes
 
 - **The published container image is pullable again.** The housekeeping step that
