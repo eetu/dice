@@ -8,7 +8,14 @@ merge, `just release-publish` tags it and uses the section as the release notes.
 
 ## [Unreleased]
 
-<!-- Add changes here as they land. -->
+### Fixes
+
+- **The published container image is pullable again.** The housekeeping step that
+  prunes old image versions treated a multi-arch tag's per-architecture manifests as
+  build leftovers and deleted them, which left the `1` tag present but pointing at
+  nothing — so `ghcr.io/eetu/dice:1` could not be pulled on any platform, and the
+  server running it could not have restarted. Nothing about the app itself changed.
+  The prune now never touches a manifest that a tag still references.
 
 ## [1.0.8] - 2026-09-03
 
