@@ -33,7 +33,7 @@ rand = "0.10"
 # `logs` carries the browser error reports (see routes::client_error) and the
 # backend's own warn!/error! lines; appender-tracing is the tracing→OTel bridge.
 opentelemetry = { version = "0.32", default-features = false, features = ["metrics", "logs"] }
-opentelemetry_sdk = { version = "0.32", default-features = false, features = ["metrics", "logs", "rt-tokio"] }
+opentelemetry_sdk = { version = "0.33", default-features = false, features = ["metrics", "logs", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["metrics", "logs", "http-proto", "reqwest-blocking-client", "reqwest-rustls-webpki-roots"] }
 opentelemetry-appender-tracing = { version = "0.32", default-features = false }
 
