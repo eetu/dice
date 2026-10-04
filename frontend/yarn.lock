@@ -1271,7 +1271,7 @@ __metadata:
     qrcode: "npm:^1.5.4"
     svelte: "npm:^5.57.1"
     svelte-check: "npm:^4.7.6"
-    three: "npm:^0.186.0"
+    three: "npm:^0.186.1"
     typescript: "npm:^6.0.2"
     vite: "npm:^8.2.2"
     vite-plugin-qrcode: "npm:^0.4.1"
@@ -2818,10 +2818,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"three@npm:^0.186.0":
-  version: 0.186.0
-  resolution: "three@npm:0.186.0"
-  checksum: 10/9a2e21487ad7e424a1eed48284bdc285ad91f1a4ba16791e5567da144e76b03939aee82b8a2c00ab1e634d62aba47e13985a22a64a99f8fb7ffda968b9c85053
+"three@npm:^0.186.1":
+  version: 0.186.1
+  resolution: "three@npm:0.186.1"
+  checksum: 10/8ae3da0f64cb9244a6790378a5dc99a6c809d4fd832d99dfe749977671f8ac612784c0ee9b62fb9d9131f62e81dcc897772d6acfacf02438ce23c97ea5171d16
   languageName: node
   linkType: hard
 
